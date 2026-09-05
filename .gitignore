@@ -1,0 +1,27 @@
+# 本地系统与编辑器文件
+.DS_Store
+*.swp
+
+# 凭据、个人设置与资料原始缓存
+.env
+.env.*
+!.env.example
+!.env.*.example
+/.local/
+/.worktrees/
+
+# 日常验收截图；正式产品图片不使用全局忽略
+/screenshots/*
+!/screenshots/README.md
+
+# 依赖、构建、测试及运行产物
+node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+dist/
+build/
+coverage/
+.pytest_cache/
+.next/
+*.log

@@ -1,0 +1,15 @@
+import { LocalizedDialogContent } from '../../shared/ui';
+import { useState } from 'react';
+import { Avatar, Badge, Button, Checkbox, Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, Input, Popover, PopoverContent, PopoverTrigger, Switch, Textarea } from '@tutti-os/ui-system';
+import { AddIcon, CheckIcon, FileTextIcon, LoadingIcon } from '@tutti-os/ui-system/icons';
+
+export function Gallery() {
+  const [checked,setChecked] = useState(false); const [enabled,setEnabled] = useState(true); const [notice,setNotice] = useState('');
+  return <div className="content-page gallery-page"><div className="page-intro"><span className="eyeline">Tutti UI System · 0.0.427</span><h1>组件样板</h1><p>工作台直接使用这些组件。切换外观后，可检查亮暗主题与交互状态。</p></div>
+    <section className="sample-section"><div><h2>动作</h2><p>默认、次要、低强调、危险、加载和禁用。</p></div><div className="sample-controls"><Button onClick={() => setNotice('确认操作已触发。')}>确认操作</Button><Button variant="secondary" onClick={() => setNotice('次要操作已触发。')}>次要操作</Button><Button variant="ghost" onClick={() => setNotice('更多操作已触发。')}>更多操作</Button><Button variant="destructive" onClick={() => setNotice('危险按钮样式预览，没有执行删除。')}>危险操作</Button><Button disabled aria-busy="true"><LoadingIcon />处理中</Button><Button disabled>不可操作</Button><Button size="icon" aria-label="添加样例" onClick={() => setNotice('添加操作已触发。')}><AddIcon /></Button></div></section>
+    <section className="sample-section"><div><h2>输入</h2><p>普通、错误和禁用状态。</p></div><div className="sample-inputs"><Input aria-label="普通输入" placeholder="输入资料名称" /><Input aria-label="错误输入" aria-invalid="true" placeholder="请填写必要信息" /><Input aria-label="禁用输入" disabled placeholder="当前不可编辑" /><Textarea aria-label="多行输入" placeholder="中文长文本与多行内容…" /></div></section>
+    <section className="sample-section"><div><h2>状态与身份</h2><p>状态通过文字和颜色共同表达。</p></div><div className="sample-controls"><Badge variant="secondary">Agent 通道</Badge><Badge variant="pending">待本人处理</Badge><Badge variant="success">已确认</Badge><Badge variant="destructive">调用失败</Badge><Avatar label="林川" initial="林" /><Avatar label="苏禾" initial="苏" /><label className="sample-toggle"><Checkbox checked={checked} onCheckedChange={v => setChecked(v === true)} />引用资料</label><label className="sample-toggle"><Switch checked={enabled} onCheckedChange={setEnabled} aria-label="允许通知" />允许通知</label></div></section>
+    <section className="sample-section"><div><h2>浮层</h2><p>检查 Esc 关闭、键盘焦点和返回触发器。</p></div><div className="sample-controls"><Dialog><DialogTrigger asChild><Button variant="secondary">打开弹窗</Button></DialogTrigger><LocalizedDialogContent><DialogHeader><DialogTitle>确认操作</DialogTitle><DialogDescription>这是 Tutti 原生 Dialog，使用同一套语义颜色、层级与动效。</DialogDescription></DialogHeader><p>这段中文用于检查阅读密度和换行。</p></LocalizedDialogContent></Dialog><Popover><PopoverTrigger asChild><Button variant="secondary">打开引用菜单</Button></PopoverTrigger><PopoverContent><div className="inline-actions"><FileTextIcon size={16} /><span>共享成果样例</span><CheckIcon size={14} /></div></PopoverContent></Popover></div></section>
+    <div className="sample-feedback" role="status">{notice || '可以操作上面的组件，检查反馈与键盘焦点。'}</div>
+  </div>;
+}

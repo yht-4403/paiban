@@ -1,0 +1,13 @@
+{
+  "name": "accord",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "scripts": {
+    "dev": "npm run dev --workspace @accord/web",
+    "build": "npm run build --workspace @accord/web",
+    "typecheck": "npm run typecheck --workspace @accord/web",
+    "check:ui": "node tools/check-ui.mjs"
+  },
+  "engines": {"node": ">=22"}
+}
