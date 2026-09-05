@@ -6,7 +6,7 @@ import { acceptsDrag, receiveDrop } from '../../shared/drag';
 
 export const scopeLabels = { private:'仅自己', team:'团队共享', round:'课题成员' };
 
-export function MaterialPicker({ resources, available, onToggle, busy, label='加入资料', availableFolders=[], folders=[], onFolder }: {
+export function MaterialPicker({ resources, available, onToggle, busy, label='指定资料', availableFolders=[], folders=[], onFolder }: {
   resources: Material[]; available: Material[]; onToggle: (id: string, selected: boolean) => void; busy: boolean; label?: string;
   availableFolders?: {id:string;name:string}[]; folders?: {id:string;name:string}[]; onFolder?: (id:string,selected?:boolean)=>void;
 }) {
@@ -21,8 +21,8 @@ export function MaterialPicker({ resources, available, onToggle, busy, label='�
     </PopoverContent></Popover>;
 }
 
-export function Materials({ folders, availableFolders, resources, available, busy, pending, onToggle, onFolder, onOpen }: {
-  resources: Material[]; available: Material[]; busy: boolean; pending?: boolean; folders?: {id: string; name: string}[];
+export function Materials({ folders, availableFolders, resources, available, busy, pending, automatic=false, onToggle, onFolder, onOpen }: {
+  resources: Material[]; available: Material[]; busy: boolean; pending?: boolean; automatic?: boolean; folders?: {id: string; name: string}[];
   availableFolders?: {id:string;name:string}[];
   onToggle: (id: string, selected: boolean) => void; onFolder?: (id: string, selected?: boolean) => void; onOpen: (resource: ResourceRef) => void;
 }) {
@@ -35,6 +35,6 @@ export function Materials({ folders, availableFolders, resources, available, bus
     <div className="material-tags">{folders?.map(folder=><div className="material-tag folder-reference" key={folder.id}><span><FolderIcon size={12} />{folder.name}</span><Button variant="ghost" size="icon-xs" disabled={busy} aria-label={`移除文件夹资料：${folder.name}`} onClick={()=>onFolder?.(folder.id,false)}><CloseIcon /></Button></div>)}{resources.map(resource=><div className="material-tag" key={resource.id}>
       <button onClick={()=>onOpen(resource)} title={`${resource.title} · v${resource.version}`}><FileTextIcon size={12} /><span>{resource.title}</span>{resource.origin==='folder' && <FolderIcon size={11} />}</button>
       {resource.origin==='round' ? <small>本轮</small> : <Button variant="ghost" size="icon-xs" aria-label={`移除资料：${resource.title}`} disabled={busy} onClick={()=>onToggle(resource.id,false)}><CloseIcon /></Button>}
-    </div>)}{!resources.length && <span className="material-empty">{hover ? '松开加入资料' : onFolder ? '拖入资料或文件夹' : '拖入资料'}</span>}</div>
+    </div>)}{!resources.length && <span className="material-empty">{hover ? '松开加入资料' : automatic ? '自动查找' : '暂无指定资料'}</span>}</div>
   </div>;
 }

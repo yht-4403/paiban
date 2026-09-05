@@ -1,3 +1,5 @@
+from accord_api.jobs import generation as generation_jobs
+from accord_api.modules.collaboration import repository as collaboration_repository
 import asyncio
 import concurrent.futures
 import json
@@ -14,7 +16,10 @@ _temporary = tempfile.TemporaryDirectory(prefix='accord-test-')
 os.environ['ACCORD_DATA_DIR'] = _temporary.name
 from fastapi.testclient import TestClient
 from accord_api.app import app
-from accord_api import agent, auth, runtime, store
+from accord_api.modules.agent_runs import generation as agent
+from accord_api.modules.identity import service as auth
+from accord_api.modules.agent_runs import service as runtime
+from accord_api.platform.db import database as store
 
 
 def reply(question, docs, history, target_name, peer, on_delta, cancelled, **kwargs):
@@ -44,7 +49,7 @@ class CollaborationTests(unittest.TestCase):
         store.execute('INSERT INTO memories(id,unit_id,title,body,source,created_at) VALUES(?,?,?,?,?,?)',('private_su',cls.ids['su'],'私人草稿','仅限本人可见','test',store.now()))
 
     def setUp(self):
-        self.mock = patch('accord_api.runtime.agent.stream_answer', side_effect=reply).start()
+        self.mock = patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply).start()
         self.addCleanup(patch.stopall)
 
     def post(self, uid, path, body=None, operation=None):
@@ -87,7 +92,7 @@ class CollaborationTests(unittest.TestCase):
         self.assertNotIn(tid,[t['id'] for t in self.state('zhou')['threads']])
 
     def test_model_receives_history_and_shared_material_only(self):
-        tid=self.start(); before=len(store.list_tasks())
+        tid=self.start(); before=len(collaboration_repository.list_tasks())
         self.send(tid,'先记住本轮讨论的是布局')
         self.send(tid,'按照刚才的讨论列出下一步')
         args=self.mock.call_args.args
@@ -95,8 +100,99 @@ class CollaborationTests(unittest.TestCase):
         self.assertEqual([item['role'] for item in args[2]],['user','assistant'])
         self.assertIn('布局',args[2][0]['content'])
         self.assertNotIn('私人',json.dumps(args[1],ensure_ascii=False))
-        self.assertEqual(len(store.list_tasks()),before)
+        self.assertEqual(len(collaboration_repository.list_tasks()),before)
         self.assertEqual(self.post('lin',f'/threads/{tid}/messages',{'body':'读这个','source_ids':['private_su']}).status_code,404)
+
+    def test_open_chat_new_item_is_fresh_after_answer_and_deduplicates_blank_or_active(self):
+        target_id = 'member_open_' + uuid4().hex[:12]
+        with store.lock, store.connection() as db:
+            now = store.now()
+            db.execute(
+                'INSERT INTO units(id,person_name,agent_name,created_at) VALUES(?,?,?,?)',
+                (target_id, '新会话目标', '新会话目标的 Agent', now),
+            )
+            db.execute(
+                'INSERT INTO accord_accounts VALUES(?,?,?,?,?)',
+                (target_id, f'{target_id}@example.test', auth.FIXED_PASSWORD_HASH, 'member', now),
+            )
+
+        def open_new():
+            return self.post('lin', '/chats/open', {'target_id': target_id, 'new_item': True})
+
+        first = open_new().json()['id']
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            blank_clicks = list(pool.map(lambda _: open_new(), range(4)))
+        self.assertTrue(all(response.status_code == 200 for response in blank_clicks))
+        self.assertEqual({response.json()['id'] for response in blank_clicks}, {first})
+
+        queued = self.send(first, '先回答这一轮', execute=False).json()['run_id']
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            active_clicks = list(pool.map(lambda _: open_new(), range(4)))
+        self.assertTrue(all(response.status_code == 200 for response in active_clicks))
+        self.assertEqual({response.json()['id'] for response in active_clicks}, {first})
+
+        runtime.execute_run(queued)
+        second = open_new().json()['id']
+        self.assertNotEqual(second, first)
+        self.assertEqual(
+            store.query_one(
+                'SELECT count(*) AS count FROM messages WHERE conversation_id=?', (second,)
+            )['count'],
+            0,
+        )
+        reopened = self.post('lin', '/chats/open', {'target_id': target_id}).json()['id']
+        self.assertEqual(reopened, second)
+        self.assertEqual(open_new().json()['id'], second)
+        self.assertEqual(
+            store.query_one(
+                'SELECT count(*) AS count FROM accord_threads WHERE owner_id=? AND target_id=?',
+                (self.ids['lin'], target_id),
+            )['count'],
+            2,
+        )
+
+    def test_process_attachment_stays_in_workbench_until_explicit_publish(self):
+        from accord_api.modules.knowledge import retrieval
+
+        tid=self.start('lin','lin')
+        before={item['id'] for item in self.state('lin')['documents']}
+        sent=self.post('lin',f'/threads/{tid}/attachment-messages',{
+            'body':'读取附件并告诉我结论',
+            'attachments':[{'filename':'阶段结论.md','content':'内部阶段结论：导航已经收拢。','mime_type':'text/markdown'}],
+        })
+        self.assertEqual(sent.status_code,200,sent.text)
+        attachment=store.query_one('SELECT * FROM accord_thread_attachments WHERE thread_id=?',(tid,))
+        self.assertIsNotNone(attachment)
+        self.assertEqual({item['id'] for item in self.state('lin')['documents']},before)
+        view=self.clients['lin'].get('/api/threads/'+tid).json()
+        self.assertEqual(view['attachments'][0]['filename'],'阶段结论.md')
+        self.assertNotIn('内部阶段结论',json.dumps(view,ensure_ascii=False))
+        with store.lock:
+            self.assertEqual(retrieval.search(store.connection(),self.ids['lin'],[self.ids['su']],'导航已经收拢')['sources'],[])
+        runtime.execute_run(sent.json()['run_id'])
+        self.assertEqual(self.mock.call_args.kwargs['attachments'][0]['content'],'内部阶段结论：导航已经收拢。')
+
+        follow=self.send(tid,'继续依据刚才的附件回答',execute=False)
+        runtime.execute_run(follow.json()['run_id'])
+        self.assertEqual(self.mock.call_args.kwargs['attachments'][0]['filename'],'阶段结论.md')
+        self.assertEqual(self.post('su',f"/attachments/{attachment['id']}/publish").status_code,404)
+        operation=str(uuid4())
+        published=self.post('lin',f"/attachments/{attachment['id']}/publish",operation=operation)
+        self.assertEqual(published.status_code,200,published.text)
+        self.assertEqual(self.post('lin',f"/attachments/{attachment['id']}/publish",operation=operation).json(),published.json())
+        resource_id=published.json()['resource_id']
+        self.assertIn(resource_id,{item['id'] for item in self.state('su')['documents']})
+        self.assertEqual(self.clients['su'].get('/api/resources/'+resource_id).json()['body'],'内部阶段结论：导航已经收拢。')
+        with store.lock:
+            self.assertTrue(retrieval.search(store.connection(),self.ids['lin'],[self.ids['su']],'导航已经收拢')['sources'])
+
+        peer=self.start('lin','su')
+        rejected=self.post('lin',f'/threads/{peer}/attachment-messages',{
+            'body':'这不应进入同事会话',
+            'attachments':[{'filename':'private.txt','content':'private','mime_type':'text/plain'}],
+        })
+        self.assertEqual(rejected.status_code,422,rejected.text)
+        self.assertFalse(store.query_one('SELECT 1 FROM accord_thread_attachments WHERE thread_id=?',(peer,)))
 
     def test_confirmation_owned_atomic_and_idempotent(self):
         tid=self.start();self.handoff(tid)
@@ -134,7 +230,7 @@ class CollaborationTests(unittest.TestCase):
         self.assertEqual(view['thread']['status'],'resolved')
         self.assertEqual(view['thread']['id'],tid)
         self.assertEqual(sum(m['body']=='本人开始回复，Agent 暂停代答。' for m in view['messages']),1)
-        self.assertEqual(store.get_task(task_id)['status'],'open')
+        self.assertEqual(collaboration_repository.get_task(task_id)['status'],'open')
         self.assertEqual(len(store.query('SELECT * FROM accord_task_acl WHERE thread_id=?',(tid,))),1)
         self.assertEqual(self.post('su',f'/threads/{tid}/confirm',payload).status_code,409)
         self.assertEqual(self.send(tid,'越权消息',uid='zhou').status_code,404)
@@ -145,7 +241,7 @@ class CollaborationTests(unittest.TestCase):
         result=self.post('su',f'/threads/{tid}/confirm',{'conclusion':'待联调','task_title':'保留待办','assignee_id':self.ids['su']})
         task_id=result.json()['task_id']
         workspace=self.start('su','su');self.send(workspace,'帮我分析这个问题',uid='su')
-        self.assertEqual(store.get_task(task_id)['status'],'open')
+        self.assertEqual(collaboration_repository.get_task(task_id)['status'],'open')
 
     def test_background_delivers_without_any_page_read(self):
         tid=self.start();self.send(tid)
@@ -154,7 +250,7 @@ class CollaborationTests(unittest.TestCase):
         self.assertEqual(result.json()['delivery_at'],'2099-09-06T10:00:00+00:00')
         self.assertNotIn(tid,[t['id'] for t in self.state('su')['threads']])
         store.execute('UPDATE accord_threads SET delivery_at=? WHERE id=?',((datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat(),tid))
-        stop=threading.Event();worker=threading.Thread(target=runtime.worker_loop,args=(stop,));worker.start()
+        stop=threading.Event();worker=threading.Thread(target=generation_jobs.worker_loop,args=(stop,));worker.start()
         try:
             deadline=time.monotonic()+2
             while store.query_one('SELECT status FROM accord_threads WHERE id=?',(tid,))['status']!='waiting' and time.monotonic()<deadline: time.sleep(.02)
@@ -183,11 +279,47 @@ class CollaborationTests(unittest.TestCase):
         self.assertEqual(self.post('su',f'/runs/{rid}/stop').status_code,404)
         self.assertEqual(self.post('lin',f'/threads/{tid}/handoff',{}).status_code,409)
         self.assertEqual(self.post('lin',f'/runs/{rid}/stop').status_code,200)
+        self.assertEqual(self.post('lin',f'/threads/{tid}/handoff').status_code,409)
+        self.assertEqual(self.clients['su'].get('/api/threads/'+tid).status_code,404)
         runtime.execute_run(rid);self.assertEqual(self.mock.call_count,0)
         result=self.post('lin',f'/runs/{rid}/retry').json()
         runtime.execute_run(result['run_id']);self.assertEqual(self.mock.call_count,1)
         self.assertEqual(self.post('lin',f'/runs/{rid}/retry').status_code,409)
         self.assertEqual(len(store.query('SELECT * FROM messages WHERE conversation_id=?',(tid,))),2)
+
+    def test_handoff_rejects_failed_truncated_or_empty_answers(self):
+        for outcome in ('error', 'cancelled', 'length', 'empty'):
+            with self.subTest(outcome=outcome):
+                tid=self.start();rid=self.send(tid,execute=False).json()['run_id']
+                def incomplete(question, docs, history, target_name, peer, on_delta, cancelled, **kwargs):
+                    on_delta('尚未回答完整', [])
+                    if outcome in ('error', 'cancelled'):
+                        raise agent.ModelError('cancelled' if outcome=='cancelled' else 'network', '验收中断')
+                    return {'body':'尚未回答完整' if outcome=='length' else '', 'sources':[], 'model':'test-provider',
+                            'usage':{}, 'finish_reason':'length' if outcome=='length' else 'stop', 'duration_ms':1}
+                self.mock.side_effect=incomplete
+                runtime.execute_run(rid)
+                response=self.post('lin',f'/threads/{tid}/handoff')
+                self.assertEqual(response.status_code,409,response.text)
+                self.assertIn('尚未完整回答',response.json()['detail'])
+                self.assertEqual(self.clients['su'].get('/api/threads/'+tid).status_code,404)
+                self.assertEqual(store.query_one('SELECT status FROM accord_threads WHERE id=?',(tid,))['status'],'agent')
+
+    def test_complete_answer_unlocks_only_its_work_item(self):
+        first=self.start();self.send(first)
+        second=self.start();rid=self.send(second,execute=False).json()['run_id']
+        self.post('lin',f'/runs/{rid}/stop')
+        self.assertEqual(self.post('lin',f'/threads/{second}/handoff').status_code,409)
+        self.assertEqual(self.post('lin',f'/threads/{first}/handoff').status_code,200)
+        retry=self.post('lin',f'/runs/{rid}/retry').json()['run_id']
+        def unknown(question, docs, history, target_name, peer, on_delta, cancelled, **kwargs):
+            body='现有资料没有答案，我不知道。'
+            on_delta(body, [])
+            return {'body':body,'sources':[],'model':'test-provider','usage':{},'finish_reason':'stop','duration_ms':1}
+        self.mock.side_effect=unknown
+        runtime.execute_run(retry)
+        self.assertEqual(self.post('lin',f'/threads/{second}/handoff').status_code,200)
+        self.assertEqual(self.clients['su'].get('/api/threads/'+second).status_code,200)
 
     def test_active_run_rejects_second_message_without_orphan_records(self):
         tid=self.start();rid=self.send(tid,execute=False).json()['run_id']
@@ -262,7 +394,7 @@ class CollaborationTests(unittest.TestCase):
         tid=self.start();rid=self.send(tid,execute=False).json()['run_id']
         store.execute("UPDATE accord_runs SET status='running' WHERE id=?",(rid,))
         async def restart():
-            async with runtime.lifespan(app):
+            async with generation_jobs.lifespan(app):
                 self.assertEqual(store.query_one('SELECT status FROM accord_runs WHERE id=?',(rid,))['status'],'error')
         asyncio.run(restart())
         self.assertEqual(self.mock.call_count,0)
@@ -283,7 +415,7 @@ class ProviderTests(unittest.TestCase):
             return httpx.Response(200,content=('\n\n'.join('data: '+json.dumps(e) for e in events)+'\n\ndata: [DONE]\n\n').encode())
         client=httpx.Client(transport=httpx.MockTransport(handler))
         updates=[]
-        with patch.dict(os.environ,{'ACCORD_LLM_API_KEY':'test-key','ACCORD_LLM_BASE_URL':'https://provider.example/v1','ACCORD_LLM_MODEL':'test-model','ACCORD_LLM_ENABLE_THINKING':'false'}),patch('accord_api.agent.httpx.Client',return_value=client):
+        with patch.dict(os.environ,{'ACCORD_LLM_API_KEY':'test-key','ACCORD_LLM_BASE_URL':'https://provider.example/v1','ACCORD_LLM_MODEL':'test-model','ACCORD_LLM_ENABLE_THINKING':'false'}),patch('accord_api.platform.ai.provider.httpx.Client',return_value=client):
             result=agent.stream_answer('问题',[],[],'本人',False,lambda text,sources:updates.append(text),lambda:False)
         self.assertEqual(result['body'],'真实回答');self.assertEqual(result['usage']['total_tokens'],22)
         self.assertEqual(updates,['真实','真实回答']);self.assertTrue(payloads[0]['stream']);self.assertFalse(payloads[0]['enable_thinking'])

@@ -10,8 +10,8 @@ export function Pending({ label = '正在载入工作台' }: { label?: string })
   return <div className="pending" role="status"><LoadingIcon size={18} /><span>{label}</span></div>;
 }
 
-export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
-  return <div className="empty-state"><div className="empty-symbol">{icon}</div><h2>{title}</h2><p>{children}</p></div>;
+export function Empty({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
+  return <div className="empty-state"><div className="empty-symbol">{icon}</div><h2>{title}</h2>{children && <p>{children}</p>}</div>;
 }
 
 export function LocalizedDialogContent({children, ...props}: ComponentProps<typeof DialogContent>) {

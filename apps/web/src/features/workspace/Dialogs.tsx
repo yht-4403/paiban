@@ -1,10 +1,9 @@
 import { scopeLabels } from './Materials';
-import { copyText } from '../../shared/browser';
 import { LocalizedDialogContent } from '../../shared/ui';
 import { useEffect, useState } from 'react';
-import { Avatar, Badge, Button, Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Textarea } from '@tutti-os/ui-system';
+import { Avatar, Badge, Button, Checkbox, Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Textarea } from '@tutti-os/ui-system';
 import { CheckIcon, FileTextIcon, LoadingIcon } from '@tutti-os/ui-system/icons';
-import { api, reasoningLabels, timeLabel, type Document, type State, type Thread } from '../../shared/api';
+import { reasoningLabels, type Document, type State, type Thread } from '../../shared/api';
 import { Markdown } from '../../shared/Markdown';
 
 export type Modal = { kind: 'handoff'; thread: Thread } | { kind: 'confirm'; thread: Thread } | { kind: 'document'; document: Document } | { kind: 'publish' } | { kind: 'settings' };
@@ -52,20 +51,15 @@ function DialogBody({ modal, close, state, busy, submit, theme, setTheme, logout
 
 function Settings({ state, theme, setTheme, busy, submit, logout }: Omit<Parameters<typeof Dialogs>[0], 'modal' | 'close'>) {
   const me = state.members.find(member => member.id === state.me)!;
-  const [invite, setInvite] = useState<{code:string;expires_at:string} | null>(null);
-  const [creating, setCreating] = useState(false); const [error, setError] = useState(''); const [copied, setCopied] = useState(false);
-  const createInvite = async () => {
-    setCreating(true); setError(''); setCopied(false);
-    try { setInvite(await api('/auth/invite', {})); } catch (error) { setError((error as Error).message); } finally { setCreating(false); }
-  };
-  return <><DialogHeader><DialogTitle>工作空间设置</DialogTitle><DialogDescription>{state.project.name} · {state.account.role === 'owner' ? '创建者' : '成员'}</DialogDescription></DialogHeader>
-    <div className="settings-account"><Avatar label={me.person_name} initial={me.person_name[0]} size={32} /><div><strong>{me.person_name}</strong><span>{state.account.email}</span></div></div>
+  const [error, setError] = useState('');
+  return <><DialogHeader><DialogTitle>设置</DialogTitle><DialogDescription>{state.project.name}</DialogDescription></DialogHeader>
+    <div className="settings-account"><Avatar label={me.person_name} initial={me.person_name[0]} size={32} /><div><strong>{me.person_name}</strong><span>{me.agent_name}</span></div></div>
     <div className="form-field"><label>外观</label><div className="theme-options">{[['dark','暗色'],['light','亮色']].map(([value,label])=><Button key={value} variant={theme===value ? 'default' : 'secondary'} aria-pressed={theme===value} onClick={()=>setTheme(value)}>{label}</Button>)}</div></div>
     <div className="form-field"><label>你的协作状态</label><div className="theme-options">{[['open','可协作'],['closed','专注中']].map(([window,label])=><Button key={window} variant={me.window===window ? 'default' : 'secondary'} aria-pressed={me.window===window} disabled={busy} onClick={()=>void submit('/profile/availability',{window})}>{label}</Button>)}</div><p>状态会展示给成员；目前不会自动拦截找本人请求。</p></div>
+    <div className="activity-sharing"><strong>同事可以看到</strong><label><Checkbox checked={state.activity_preferences.automatic} disabled={busy} onCheckedChange={checked=>void submit('/profile/activity',{...state.activity_preferences,automatic:!!checked,work_title:!!checked && state.activity_preferences.work_title,expected_version:state.activity_preferences.version})} /><span>我在 Accord 聊天或工作的状态</span></label><label><Checkbox checked={state.activity_preferences.work_title} disabled={busy || !state.activity_preferences.automatic} onCheckedChange={checked=>void submit('/profile/activity',{...state.activity_preferences,work_title:!!checked,expected_version:state.activity_preferences.version})} /><span>我正在处理的事项标题</span></label><small>聊天正文仍按每段对话的可见范围共享。</small></div>
     <div className="settings-model"><Badge variant="secondary">{state.model.label}</Badge><p>今日已发起 {state.model.requests_today} / {state.model.daily_limit} 次生成，模型已回报 {state.model.reported_tokens_today.toLocaleString()} tokens。中断时未回传的用量不计入这里。</p></div>
     {!!state.model.reasoning_options?.length && <div className="form-field"><label id="reasoning-label">你的思考强度</label><div className="theme-options" role="group" aria-labelledby="reasoning-label">{state.model.reasoning_options.map(effort => <Button key={effort} variant={state.model.reasoning_effort===effort ? 'default' : 'secondary'} aria-pressed={state.model.reasoning_effort===effort} disabled={busy} onClick={async () => { setError(''); if (!await submit('/profile/reasoning', { reasoning_effort: effort })) setError('思考强度未能保存，请重试。'); }}>{reasoningLabels[effort]}{effort==='max' ? '（默认）' : ''}</Button>)}</div><p>最高档适合复杂问题，等待时间和用量通常更多。仅影响你接下来发起或重试的回答，已在生成的回答保持原设置。</p></div>}
-    {state.account.role==='owner' && <div className="form-field"><label>邀请成员</label><p>邀请码 24 小时内有效，每个邀请码仅可加入一人。</p><Button variant="secondary" disabled={creating} onClick={()=>void createInvite()}>{creating && <LoadingIcon />}{invite ? '生成另一个邀请码' : '生成邀请码'}</Button>{invite && <><Input aria-label="新生成的邀请码" readOnly value={invite.code} /><Button variant="ghost" size="sm" onClick={()=>void copyText(invite.code).then(()=>setCopied(true)).catch(()=>setError('复制失败，请选择邀请码复制。'))}>{copied ? '已复制' : '复制邀请码'}</Button><p>{timeLabel(invite.expires_at)}（北京时间）到期。</p></>}</div>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <DialogFooter><Button variant="secondary" disabled={busy} onClick={logout}>退出登录</Button></DialogFooter>
+    <DialogFooter><Button variant="secondary" disabled={busy} onClick={logout}>切换身份</Button></DialogFooter>
   </>;
 }

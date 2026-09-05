@@ -1,0 +1,27 @@
+.library-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.knowledge-import { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.knowledge-import>span,.knowledge-evidence small,.knowledge-results>small { color:var(--text-secondary); font-size:12px; }
+.knowledge-import .form-error { flex-basis:100%; }
+.knowledge-search { margin:16px 0; }
+.knowledge-search form { display:flex; gap:8px; }
+.knowledge-search form>input { flex:1; min-width:0; }
+.knowledge-results { margin-top:12px; }
+.knowledge-evidence { padding:8px 0; border-bottom:1px solid var(--border); }
+.knowledge-evidence summary { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; }
+.knowledge-evidence summary>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.knowledge-evidence summary>small { flex-shrink:0; margin-left:auto; }
+.knowledge-evidence pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; font-size:13px; line-height:1.65; padding:8px 12px; margin:8px 0; background:var(--background-panel); border-radius:8px; }
+.knowledge-citations { margin-top:8px; font-size:12px; color:var(--text-secondary); }
+.knowledge-citations>summary { cursor:pointer; }
+.knowledge-results>small { display:block; margin-top:8px; }
+.knowledge-connectors { margin:0 0 16px; padding:12px; border:1px solid var(--border); border-radius:10px; }
+.knowledge-connector-heading,.knowledge-connection-row { display:flex; align-items:center; gap:10px; }
+.knowledge-connector-heading { justify-content:space-between; }
+.knowledge-connectors>form { display:flex; gap:8px; margin-top:10px; }
+.knowledge-connectors>form>input { flex:1; min-width:0; }
+.knowledge-connection-list { margin-top:8px; }
+.knowledge-connection-row { min-height:48px; border-top:1px solid var(--border); }
+.knowledge-connection-name { min-width:0; flex:1; display:flex; flex-direction:column; }
+.knowledge-connection-name strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+.knowledge-connection-name small { color:var(--text-secondary); font-size:12px; }
+.knowledge-connection-actions { display:flex; align-items:center; gap:2px; flex-shrink:0; }

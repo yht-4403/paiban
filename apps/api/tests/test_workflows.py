@@ -1,3 +1,4 @@
+from accord_api.modules.collaboration import repository as collaboration_repository
 import concurrent.futures
 import json
 import os
@@ -10,7 +11,10 @@ import httpx
 # Reuse the isolated accounts; this module can also be run on its own.
 import test_collaboration as fixtures
 from test_collaboration import reply
-from accord_api import agent, context, runtime, store
+from accord_api.modules.agent_runs import generation as agent
+from accord_api.modules import knowledge as context
+from accord_api.modules.agent_runs import service as runtime
+from accord_api.platform.db import database as store
 
 
 class WorkflowTests(unittest.TestCase):
@@ -39,7 +43,7 @@ class WorkflowTests(unittest.TestCase):
     def send(self, who, tid, body='根据当前资料回答', execute=True):
         result = self.post(who, f'/threads/{tid}/messages', {'body': body})
         if execute:
-            with patch('accord_api.runtime.agent.stream_answer', side_effect=reply):
+            with patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply):
                 runtime.execute_run(result['run_id'])
         return result['run_id']
 
@@ -73,14 +77,14 @@ class WorkflowTests(unittest.TestCase):
         self.post('lin', f'/threads/{tid}/move', {'expected_version': 1, 'folder_id': b})
         snapshot = json.loads(store.query_one('SELECT manifest FROM accord_run_inputs WHERE run_id=?', (rid,))['manifest'])
         self.assertEqual(snapshot['resources'][0]['version'], 1)
-        with patch('accord_api.runtime.agent.stream_answer', side_effect=reply) as call:
+        with patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply) as call:
             runtime.execute_run(rid)
             self.assertEqual(call.call_args.args[1][0]['body'], 'PINNED-VERSION-ONE')
         data = self.get('lin', '/threads/'+tid)
         self.assertEqual(data['thread']['folder_id'], b)
         self.assertEqual(data['context']['resources'], [])
         rid2 = self.send('lin', tid, execute=False)
-        with patch('accord_api.runtime.agent.stream_answer', side_effect=reply) as call:
+        with patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply) as call:
             runtime.execute_run(rid2)
             self.assertEqual(call.call_args.args[1], [])
             self.assertTrue(call.call_args.args[2])
@@ -90,7 +94,7 @@ class WorkflowTests(unittest.TestCase):
     def test_empty_context_never_falls_back_to_global_documents(self):
         self.resource(scope='team', body='DO-NOT-LOAD-WITHOUT-BINDING')
         tid = self.thread(); rid = self.send('lin', tid, execute=False)
-        with patch('accord_api.runtime.agent.stream_answer', side_effect=reply) as call:
+        with patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply) as call:
             runtime.execute_run(rid)
             self.assertEqual(call.call_args.args[1], [])
 
@@ -103,7 +107,7 @@ class WorkflowTests(unittest.TestCase):
         rid = self.send('lin', tid, execute=False)
         self.post('lin', f'/folders/{folder}/bindings', {'expected_version': 1, 'included': [second]})
         self.assertEqual([r['id'] for r in self.get('lin', f'/threads/{tid}/context')['resources']], [second])
-        with patch('accord_api.runtime.agent.stream_answer', side_effect=reply) as call:
+        with patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply) as call:
             runtime.execute_run(rid)
             self.assertEqual([r['id'] for r in call.call_args.args[1]], [first])
         self.post('lin', f'/folders/{folder}/remove', {'expected_version': 1}, status=409)
@@ -132,7 +136,7 @@ class WorkflowTests(unittest.TestCase):
         self.post('lin', f'/threads/{tid}/bindings', {'expected_version': 0, 'included': [bundle, bundle]})
         self.assertEqual(len(self.get('lin', f'/threads/{tid}/context')['resources']), 1)
         rid = self.send('lin', tid, execute=False)
-        with patch('accord_api.runtime.agent.stream_answer', side_effect=reply) as call:
+        with patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply) as call:
             runtime.execute_run(rid)
             self.assertEqual({d['id'] for d in call.call_args.args[1]}, {bundle, private})
 
@@ -142,7 +146,7 @@ class WorkflowTests(unittest.TestCase):
         self.post('lin', f'/threads/{tid}/bindings', {'expected_version': 0, 'included': [resource]})
         rid = self.send('lin', tid, execute=False)
         self.post('lin', f'/resources/{resource}/update', {'expected_version': 1, 'title': '收回共享', 'body': '现在仅自己', 'scope': 'private'})
-        with patch('accord_api.runtime.agent.stream_answer', side_effect=reply) as call:
+        with patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply) as call:
             runtime.execute_run(rid)
             call.assert_not_called()
         self.assertEqual(store.query_one('SELECT status FROM accord_runs WHERE id=?', (rid,))['status'], 'error')
@@ -157,6 +161,15 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('明确选中的结论', json.dumps(data, ensure_ascii=False))
         self.get('su', '/threads/'+tid, 404)
         self.get('zhou', '/threads/'+shared, 404)
+
+    def test_handoff_rechecks_resource_scope_after_answer_completes(self):
+        resource=self.resource(scope='team')
+        tid=self.thread(peer=True)
+        self.post('lin',f'/threads/{tid}/bindings',{'expected_version':0,'included':[resource]})
+        self.send('lin',tid)
+        self.post('lin',f'/resources/{resource}/update',{'expected_version':1,'title':'已收回资料','body':'仅自己','scope':'private'})
+        self.post('lin',f'/threads/{tid}/handoff',status=403)
+        self.get('su','/threads/'+tid,404)
 
     def test_two_people_explore_release_decide_and_accept(self):
         rid = self.topic()
@@ -182,15 +195,15 @@ class WorkflowTests(unittest.TestCase):
         review = self.post('su', f'/topics/{rid}/reviews')['id']
         self.assertEqual(self.get('su', '/threads/'+review)['messages'], [])
         run_id = self.send('su', review, '比较已公开方案', execute=False)
-        with patch('accord_api.runtime.agent.stream_answer', side_effect=reply) as call:
+        with patch('accord_api.modules.agent_runs.service.agent.stream_answer', side_effect=reply) as call:
             runtime.execute_run(run_id)
             self.assertEqual(call.call_args.args[2], [])
             self.assertNotIn('PRIVATE-A-RESEARCH', json.dumps(call.call_args.args[1]))
             self.assertNotIn('PRIVATE-B-RESEARCH', json.dumps(call.call_args.args[1]))
         self.post('lin', f'/topics/{rid}/decision', {'expected_version': published['version'], 'body': '采用 A，先验证接口。', 'proposal_ids': [pa]})
-        task_count = len(store.list_tasks())
+        task_count = len(collaboration_repository.list_tasks())
         handed = self.post('lin', f'/topics/{rid}/handoff', {'target_id': self.ids['su'], 'task_title': '验证接口'})['id']
-        self.assertEqual(len(store.list_tasks()), task_count)
+        self.assertEqual(len(collaboration_repository.list_tasks()), task_count)
         again = self.post('lin', f'/topics/{rid}/handoff', {'target_id': self.ids['su'], 'task_title': '验证接口'})['id']
         self.assertEqual(handed, again)
         task = self.post('su', f'/threads/{handed}/confirm', {'conclusion': '我来验证接口', 'task_title': '验证接口', 'assignee_id': self.ids['su']})['task_id']
@@ -239,7 +252,7 @@ class WorkflowTests(unittest.TestCase):
             else:
                 events = [{'choices':[{'delta':{'content':'根据资料，证据编号为 7182。'},'finish_reason':'stop'}]}, {'choices':[],'usage':{'total_tokens':23}}]
             return httpx.Response(200, content=('\n\n'.join('data: '+json.dumps(e) for e in events)+'\n\ndata: [DONE]\n').encode())
-        with patch.dict(os.environ, {'ACCORD_LLM_API_KEY':'test-key','ACCORD_LLM_BASE_URL':'https://provider.test/v1','ACCORD_LLM_MODEL':'test-model'}), patch('accord_api.agent.httpx.Client', return_value=httpx.Client(transport=httpx.MockTransport(handler))):
+        with patch.dict(os.environ, {'ACCORD_LLM_API_KEY':'test-key','ACCORD_LLM_BASE_URL':'https://provider.test/v1','ACCORD_LLM_MODEL':'test-model'}), patch('accord_api.platform.ai.provider.httpx.Client', return_value=httpx.Client(transport=httpx.MockTransport(handler))):
             runtime.execute_run(rid)
         self.assertEqual(len(payloads), 2)
         self.assertNotIn('TOOL-ONLY-EVIDENCE-7182', json.dumps(payloads[0]))
@@ -252,7 +265,8 @@ class WorkflowTests(unittest.TestCase):
 
     def test_tool_cannot_read_unbound_id_or_inject_authority(self):
         resource = self.resource()
-        tid = self.thread(); rid = self.send('lin', tid, execute=False)
+        folder = self.post('lin', '/folders', {'name': '限定空资料范围'})['id']
+        tid = self.thread(folder); rid = self.send('lin', tid, execute=False)
         snapshot = json.loads(store.query_one('SELECT manifest FROM accord_run_inputs WHERE run_id=?', (rid,))['manifest'])
         tools = context.ToolContext(rid, snapshot)
         self.assertIn('error', tools.execute('denied_id', 'context_read', {'resource_id': resource}))

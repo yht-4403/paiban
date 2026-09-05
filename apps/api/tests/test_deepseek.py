@@ -5,10 +5,11 @@ from unittest.mock import patch
 
 import httpx
 
-from accord_api import agent
+from accord_api.modules.agent_runs import generation as agent
 
 
 class ReadContext:
+    schemas = [{'type': 'function', 'function': {'name': 'context_read', 'parameters': {'type': 'object', 'properties': {'resource_id': {'type': 'string'}}}}}]
     manifest = {'resources': [{'id':'r1','title':'Check'}], 'purpose':'ordinary'}
 
     def __init__(self):
@@ -29,7 +30,7 @@ class DeepSeekTests(unittest.TestCase):
         config = {'ACCORD_LLM_PROVIDER':'deepseek', 'ACCORD_LLM_BASE_URL':'https://api.deepseek.com',
                   'ACCORD_LLM_MODEL':'deepseek-v4-pro', 'ACCORD_LLM_API_KEY':'test-only',
                   'ACCORD_LLM_REASONING_EFFORT':'max', 'ACCORD_LLM_ENABLE_THINKING':'false'}
-        with patch.dict(os.environ, config), patch('accord_api.agent.httpx.Client', return_value=client):
+        with patch.dict(os.environ, config), patch('accord_api.platform.ai.provider.httpx.Client', return_value=client):
             return agent.stream_answer('Read the value', [], [{'role':'assistant','content':'Earlier answer','reasoning_content':'earlier trace'}],
                 'Owner', False, kwargs.pop('on_delta', lambda *a:None), kwargs.pop('cancelled', lambda:False), **kwargs)
 

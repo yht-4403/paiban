@@ -1,3 +1,4 @@
+import { ImportFiles, KnowledgeSearch, LarkConnections } from './KnowledgeTools';
 import { useRef, useState } from 'react';
 import { Button, Checkbox, Input, Textarea } from '@tutti-os/ui-system';
 import { AddIcon, FileTextIcon, FolderIcon, UploadIcon } from '@tutti-os/ui-system/icons';
@@ -7,21 +8,23 @@ import { useMutation } from '../../shared/useMutation';
 import { scopeLabels } from './Materials';
 
 export function ResourceLibrary({state,onRefresh,onResource,onUse}: {state:State;onRefresh:()=>Promise<void>;onResource:(resource:ResourceRef)=>void;onUse:(id:string)=>void}) {
-  const [editing,setEditing]=useState<Document | 'new' | null>(null); const [filter,setFilter]=useState('all'); const [query,setQuery]=useState('');
-  const items=state.documents.filter(resource=>(filter==='all' || resource.scope===filter) && resource.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  return <div className="content-page resource-library"><div className="page-intro page-intro-actions"><div><h1>资料</h1></div><Button onClick={()=>setEditing('new')}><AddIcon />新建资料</Button></div>
-    <div className="library-filters"><div className="work-filters">{[['all','全部'],['private','仅自己'],['team','团队'],['round','课题']].map(([id,label])=><button key={id} className={filter===id ? 'active' : ''} onClick={()=>setFilter(id)}>{label}</button>)}</div><Input aria-label="搜索资料" placeholder="搜索资料" value={query} onChange={event=>setQuery(event.target.value)} /></div>
+  const [editing,setEditing]=useState<Document | 'new' | null>(null); const [filter,setFilter]=useState('all'); const [searching,setSearching]=useState(false);
+  const items=state.documents.filter(resource=>(filter==='all' || resource.scope===filter));
+  return <div className="content-page resource-library"><div className="page-intro page-intro-actions"><div><h1>资料</h1></div><div className="library-actions"><ImportFiles onRefresh={onRefresh}/><Button onClick={()=>setEditing('new')}><AddIcon />新建资料</Button></div></div>
+    <KnowledgeSearch onSearchChange={setSearching} />
+    {!searching && <LarkConnections state={state} onRefresh={onRefresh} />}
+    {!searching && <div className="library-filters"><div className="work-filters">{[['all','全部'],['private','仅自己'],['team','团队'],['round','课题']].map(([id,label])=><button key={id} className={filter===id ? 'active' : ''} onClick={()=>setFilter(id)}>{label}</button>)}</div></div>}
     {editing && <ResourceEditor key={editing==='new' ? 'new' : editing.id} resource={editing==='new' ? undefined : editing} state={state} onRefresh={onRefresh} close={()=>setEditing(null)} />}
-    <div className="document-list">{items.map(resource=><article className="resource-row" key={resource.id} draggable onDragStart={event=>dragStart(event,{kind:'resource',id:resource.id})} onDragEnd={dragEnd}>
+    {!searching && <div className="document-list">{items.map(resource=><article className="resource-row" key={resource.id} draggable onDragStart={event=>dragStart(event,{kind:'resource',id:resource.id})} onDragEnd={dragEnd}>
       <button className="resource-open" onClick={()=>onResource(resource)}><span className="file-tile">{resource.kind==='collection' ? <FolderIcon size={18} /> : <FileTextIcon size={18} />}</span><span><strong>{resource.title}</strong><small>{scopeLabels[resource.scope]} · v{resource.version}{resource.refs.length ? ` · ${resource.refs.length} 份引用` : ''}</small></span></button>
-      <div className="resource-row-actions"><Button variant="ghost" size="xs" onClick={()=>onUse(resource.id)}>用于新聊天</Button>{resource.unit_id===state.me && ['note','collection'].includes(resource.kind) && <Button variant="ghost" size="xs" onClick={()=>setEditing(resource)}>编辑</Button>}</div>
-    </article>)}</div>{!items.length && !editing && <div className="empty-state"><h2>{query ? '没有匹配的资料' : '保存工作需要的资料'}</h2><p>支持正文、Markdown 文件和资料集合。</p></div>}
+      <div className="resource-row-actions"><Button variant="ghost" size="xs" onClick={()=>onUse(resource.id)}>用于新聊天</Button>{resource.unit_id===state.me && ['note','collection','memory'].includes(resource.kind) && <Button variant="ghost" size="xs" onClick={()=>setEditing(resource)}>编辑</Button>}</div>
+    </article>)}</div>}{!searching && !items.length && !editing && <div className="empty-state"><h2>保存工作需要的资料</h2><p>支持正文、Markdown 文件和资料集合。</p></div>}
   </div>;
 }
 
-function ResourceEditor({resource,state,onRefresh,close}: {resource?:Document;state:State;onRefresh:()=>Promise<void>;close:()=>void}) {
+export function ResourceEditor({resource,state,onRefresh,close,initialScope='private'}: {initialScope?:'private'|'team';resource?:Document;state:State;onRefresh:()=>Promise<void>;close:()=>void}) {
   const [title,setTitle]=useState(resource?.title || ''); const [body,setBody]=useState(resource?.body || '');
-  const [scope,setScope]=useState(resource?.scope==='team' ? 'team' : 'private'); const [refs,setRefs]=useState(resource?.refs.map(r=>r.id) || []);
+  const [scope,setScope]=useState(resource ? resource.scope==='team'?'team':'private' : initialScope); const [refs,setRefs]=useState(resource?.refs.map(r=>r.id) || []);
   const [showRefs,setShowRefs]=useState(!!refs.length); const file=useRef<HTMLInputElement>(null);
   const {busy,error,setError,mutate}=useMutation(onRefresh);
   const readFile=async (upload?:File)=> {

@@ -7,7 +7,7 @@
 .conversation-delivery { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .conversation-delivery input { width: auto; flex: 1; min-width: 180px; }
 .conversation-input .composer-audience { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; }
-.conversation-input .composer-error { margin: 0 16px 8px; color: var(--text-primary); font-size: 12px; }
+.conversation-input .composer-error { margin: 0 16px 8px; color: var(--state-danger); font-size: 12px; }
 .conversation-input .send-action { width: auto; height: 32px; padding: 0 12px; border-radius: 6px; }
 .conversation-task { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: 0 0 20px 34px; border: 1px solid var(--line-1); border-radius: 8px; }
 .conversation-task > div { flex: 1; min-width: 0; }

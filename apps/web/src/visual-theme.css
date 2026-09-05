@@ -1,0 +1,601 @@
+/* Accord visual layer: trustworthy product surfaces with rare color sparks. */
+
+:root[data-theme="light"] {
+  --renderer-accent: oklch(0.55 0.21 268);
+  --renderer-accent-pressed: oklch(0.49 0.21 268);
+  --renderer-background: oklch(0.965 0.009 268);
+  --renderer-background-fronted: oklch(0.995 0.003 268);
+  --renderer-background-panel: oklch(0.95 0.012 268);
+  --renderer-border: oklch(0.89 0.015 268);
+  --renderer-foreground: oklch(0.25 0.03 268);
+  --renderer-text-primary: oklch(0.25 0.03 268);
+  --renderer-text-secondary: oklch(0.47 0.025 268);
+  --renderer-danger: oklch(0.56 0.21 25);
+  --renderer-success: oklch(0.58 0.16 150);
+
+  --background: var(--renderer-background);
+  --background-primary: oklch(0.995 0.003 268);
+  --background-secondary: oklch(0.95 0.018 268);
+  --background-panel: var(--renderer-background-panel);
+  --background-fronted: var(--renderer-background-fronted);
+  --background-session-flow: oklch(0.995 0.003 268);
+  --background-session-sidepanel: oklch(0.935 0.015 268);
+  --background-soft: oklch(0.95 0.012 268);
+  --foreground: var(--renderer-foreground);
+  --text-primary: var(--renderer-text-primary);
+  --text-primary-hover: oklch(0.20 0.035 268);
+  --text-secondary: var(--renderer-text-secondary);
+  --text-tertiary: oklch(0.54 0.02 268);
+  --text-placeholder: oklch(0.48 0.023 268);
+  --text-disabled: oklch(0.65 0.015 268);
+  --text-inverted: oklch(0.995 0.003 268);
+
+  --primary: var(--renderer-accent);
+  --primary-foreground: oklch(0.995 0.003 268);
+  --secondary: oklch(0.94 0.022 268);
+  --secondary-foreground: oklch(0.25 0.03 268);
+  --muted: oklch(0.945 0.012 268);
+  --muted-foreground: oklch(0.47 0.025 268);
+  --accent: var(--renderer-accent);
+  --accent-bg: oklch(0.95 0.035 268);
+  --accent-foreground: oklch(0.30 0.08 268);
+  --accent-sun: oklch(0.88 0.17 95);
+  --accent-coral: oklch(0.68 0.19 30);
+  --accent-violet: oklch(0.58 0.20 305);
+  --rich-text-mention-issue: var(--accent-violet);
+  --rich-text-mention-session: var(--state-success);
+  --folder: oklch(0.61 0.16 235);
+  --state-danger: var(--renderer-danger);
+  --state-danger-hover: oklch(0.50 0.20 25);
+  --state-success: var(--renderer-success);
+  --state-warning: oklch(0.55 0.15 70);
+  --status-running: var(--primary);
+  --on-danger: oklch(0.95 0.035 25);
+  --on-danger-hover: oklch(0.92 0.055 25);
+
+  --border: var(--renderer-border);
+  --border-1: oklch(0.89 0.015 268);
+  --border-2: oklch(0.92 0.012 268);
+  --line-1: var(--border-1);
+  --line-2: var(--border-2);
+  --line-primary: var(--line-1);
+  --line-focus-window: oklch(0.84 0.03 268);
+  --border-focus: oklch(0.55 0.21 268 / 0.24);
+  --ring: oklch(0.55 0.21 268);
+  --input: oklch(0.94 0.016 268);
+
+  --transparency-block: oklch(0.94 0.014 268);
+  --transparency-hover: oklch(0.915 0.022 268);
+  --transparency-active: oklch(0.90 0.035 268);
+  --shadow-xs: 0 1px 2px oklch(0.25 0.03 268 / 0.08);
+  --shadow-soft: 0 2px 8px oklch(0.25 0.03 268 / 0.08);
+  --shadow-panel: 0 12px 32px oklch(0.25 0.03 268 / 0.12);
+}
+
+:root[data-theme="dark"] {
+  --renderer-accent: oklch(0.71 0.14 268);
+  --renderer-accent-pressed: oklch(0.65 0.16 268);
+  --renderer-background: oklch(0.17 0.025 268);
+  --renderer-background-fronted: oklch(0.225 0.025 268);
+  --renderer-background-panel: oklch(0.205 0.025 268);
+  --renderer-border: oklch(0.32 0.025 268);
+  --renderer-foreground: oklch(0.95 0.008 268);
+  --renderer-text-primary: oklch(0.95 0.008 268);
+  --renderer-text-secondary: oklch(0.74 0.018 268);
+  --renderer-danger: oklch(0.72 0.16 25);
+  --renderer-success: oklch(0.72 0.14 150);
+
+  --background: var(--renderer-background);
+  --background-primary: oklch(0.20 0.025 268);
+  --background-secondary: oklch(0.245 0.03 268);
+  --background-panel: var(--renderer-background-panel);
+  --background-fronted: var(--renderer-background-fronted);
+  --background-session-flow: oklch(0.185 0.025 268);
+  --background-session-sidepanel: oklch(0.145 0.024 268);
+  --background-soft: oklch(0.20 0.025 268);
+  --foreground: var(--renderer-foreground);
+  --text-primary: var(--renderer-text-primary);
+  --text-primary-hover: oklch(0.99 0.003 268);
+  --text-secondary: var(--renderer-text-secondary);
+  --text-tertiary: oklch(0.66 0.018 268);
+  --text-placeholder: oklch(0.70 0.018 268);
+  --text-disabled: oklch(0.49 0.018 268);
+  --text-inverted: oklch(0.16 0.025 268);
+
+  --primary: var(--renderer-accent);
+  --primary-foreground: oklch(0.16 0.025 268);
+  --secondary: oklch(0.26 0.028 268);
+  --secondary-foreground: oklch(0.95 0.008 268);
+  --muted: oklch(0.245 0.025 268);
+  --muted-foreground: oklch(0.74 0.018 268);
+  --accent: var(--renderer-accent);
+  --accent-bg: oklch(0.27 0.055 268);
+  --accent-foreground: oklch(0.92 0.035 268);
+  --accent-sun: oklch(0.82 0.15 95);
+  --accent-coral: oklch(0.72 0.16 30);
+  --accent-violet: oklch(0.72 0.15 305);
+  --rich-text-mention-issue: var(--accent-violet);
+  --rich-text-mention-session: var(--state-success);
+  --folder: oklch(0.72 0.12 235);
+  --state-danger: var(--renderer-danger);
+  --state-danger-hover: oklch(0.77 0.15 25);
+  --state-success: var(--renderer-success);
+  --state-warning: oklch(0.78 0.13 78);
+  --status-running: var(--primary);
+  --on-danger: oklch(0.26 0.055 25);
+  --on-danger-hover: oklch(0.30 0.07 25);
+
+  --border: var(--renderer-border);
+  --border-1: oklch(0.32 0.025 268);
+  --border-2: oklch(0.28 0.025 268);
+  --line-1: var(--border-1);
+  --line-2: var(--border-2);
+  --line-primary: var(--line-1);
+  --line-focus-window: oklch(0.39 0.04 268);
+  --border-focus: oklch(0.71 0.14 268 / 0.3);
+  --ring: oklch(0.71 0.14 268);
+  --input: oklch(0.245 0.025 268);
+
+  --transparency-block: oklch(0.235 0.025 268);
+  --transparency-hover: oklch(0.27 0.032 268);
+  --transparency-active: oklch(0.30 0.045 268);
+  --shadow-xs: 0 1px 2px oklch(0.05 0.01 268 / 0.24);
+  --shadow-soft: 0 2px 8px oklch(0.05 0.01 268 / 0.28);
+  --shadow-panel: 0 12px 32px oklch(0.05 0.01 268 / 0.32);
+}
+
+body {
+  background: var(--background-session-sidepanel);
+  color: var(--text-primary);
+}
+
+.app-shell {
+  background: var(--background-session-sidepanel);
+}
+
+.workbench {
+  background: var(--background-session-flow);
+}
+
+.workbench-header {
+  height: 48px;
+  padding: 0 10px;
+  background: var(--background-fronted);
+  border-bottom-color: var(--line-1);
+}
+
+.breadcrumb {
+  gap: 10px;
+  color: var(--text-tertiary);
+}
+
+.breadcrumb strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.header-actions [data-slot="button"][aria-pressed="true"] {
+  color: var(--primary);
+  background: var(--accent-bg);
+}
+
+.sidebar {
+  width: 236px;
+  padding: 18px 12px 12px;
+  background: var(--background-panel);
+  border-right-color: var(--line-1);
+}
+
+.sidebar-brand {
+  padding: 0 8px 20px;
+}
+
+.sidebar-wordmark {
+  color: var(--text-primary);
+}
+
+.sidebar-wordmark::after {
+  content: "·";
+  color: var(--primary);
+}
+
+.workspace-mode {
+  margin-bottom: 16px;
+  padding: 3px;
+  background: var(--transparency-active);
+}
+
+.workspace-mode > button.active {
+  color: var(--text-primary);
+  background: var(--background-fronted);
+  box-shadow: var(--shadow-xs);
+}
+
+.new-button[data-slot="button"] {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.new-button[data-slot="button"]:hover {
+  color: var(--primary-foreground);
+  background: var(--renderer-accent-pressed);
+}
+
+.nav-row.selected,
+.thread-entry.selected,
+.chat-contact.selected {
+  color: var(--primary);
+  background: var(--accent-bg);
+}
+
+.thread-entry.selected .thread-row,
+.chat-contact.selected small {
+  color: var(--accent-foreground);
+}
+
+.primary-nav .nav-row:first-child > svg {
+  color: var(--accent-violet);
+}
+
+.primary-nav .nav-row:nth-child(2) > svg {
+  color: var(--accent-coral);
+}
+
+.notification-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--accent-coral);
+}
+
+.profile-button {
+  border-top: 1px solid var(--line-1);
+  border-radius: 0;
+}
+
+.main-surface {
+  background: var(--background-session-flow);
+}
+
+.context-panel,
+.group-members {
+  background: var(--background-panel);
+  border-left-color: var(--line-1);
+}
+
+.workbench-todos {
+  background: var(--accent-bg);
+  border-bottom-color: var(--line-1);
+}
+
+.workbench-todos > summary > svg,
+.workbench-todos > summary > small {
+  color: var(--primary);
+}
+
+.workbench-pool {
+  background: var(--background-fronted);
+}
+
+.content-page {
+  max-width: 980px;
+  padding: 36px 40px;
+}
+
+.page-intro {
+  margin-bottom: 28px;
+}
+
+.page-intro h1 {
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.page-intro p,
+.message-body,
+.markdown-body,
+.decision-card p {
+  text-wrap: pretty;
+}
+
+.member-row,
+.task-row,
+.document-row,
+.resource-row,
+.topic-list-row,
+.flow-list > button,
+.flow-pending {
+  border-color: var(--line-1);
+  transition: background-color 150ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.member-row:hover,
+.task-row:hover,
+.document-row:hover,
+.resource-row:hover,
+.topic-list-row:hover,
+.flow-list > button:hover,
+.flow-pending:hover {
+  background: var(--transparency-block);
+}
+
+.decision-card,
+.flow-editor {
+  border-color: var(--line-1);
+  background: var(--background-fronted);
+}
+
+.empty-symbol,
+.welcome-mark {
+  color: var(--primary);
+  background: var(--accent-bg);
+}
+
+.empty-symbol {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  align-items: center;
+  border-radius: 14px;
+}
+
+.workspace-welcome {
+  width: min(100%, 760px);
+  padding-bottom: 88px;
+}
+
+.welcome-mark {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+}
+
+.welcome-mark::before,
+.welcome-mark::after,
+.empty-symbol::before,
+.empty-symbol::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 3px solid var(--background-session-flow);
+  border-radius: 50%;
+}
+
+.welcome-mark::before,
+.empty-symbol::before {
+  top: -4px;
+  right: 4px;
+  background: var(--accent-sun);
+}
+
+.welcome-mark::after,
+.empty-symbol::after {
+  right: -4px;
+  bottom: 5px;
+  background: var(--accent-coral);
+}
+
+.workspace-welcome h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.flows-page > .subtle-message {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+}
+
+.composer {
+  border-color: var(--line-focus-window);
+  background: var(--background-fronted);
+  box-shadow: var(--shadow-soft);
+  transition: border-color 150ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 150ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.composer:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--border-focus), var(--shadow-soft);
+}
+
+.composer textarea::placeholder,
+.auth-form input::placeholder {
+  color: var(--text-placeholder);
+  opacity: 1;
+}
+
+[data-slot="button"][data-variant="default"],
+.send-button[data-slot="button"] {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+[data-slot="button"][data-variant="default"]:hover,
+.send-button[data-slot="button"]:hover {
+  color: var(--primary-foreground);
+  background: var(--renderer-accent-pressed);
+}
+
+[data-slot="button"][data-variant="default"]:disabled,
+.send-button[data-slot="button"]:disabled {
+  color: var(--text-disabled);
+  background: var(--transparency-block);
+}
+
+:where(button, a, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.person-conversation .message-own .message-body {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.person-conversation .message-agent .markdown-body {
+  color: var(--text-primary);
+  background: var(--accent-bg);
+}
+
+.message-agent-label,
+.message-mention {
+  color: var(--accent-violet);
+  background: color-mix(in oklch, var(--accent-violet) 10%, var(--background-fronted));
+}
+
+.message-mention {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.conversation-task {
+  border-color: var(--line-1);
+  background: var(--background-fronted);
+}
+
+.conversation-task:not(.task-completed) {
+  box-shadow: inset 0 0 0 1px var(--accent-bg);
+}
+
+.generation-status {
+  color: var(--primary);
+}
+
+.topic-chat-band,
+.flow-toolbar {
+  background: var(--accent-bg);
+  border-color: var(--line-1);
+}
+
+.login-screen,
+.boot-screen {
+  position: relative;
+  isolation: isolate;
+  background: var(--background-session-sidepanel);
+}
+
+.login-card {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 40px;
+  border-radius: 16px;
+  background: var(--background-fronted);
+  box-shadow: var(--shadow-panel);
+}
+
+.login-card::before {
+  content: "";
+  position: absolute;
+  top: 26px;
+  right: 76px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 18px 0 0 var(--accent-sun), 36px 0 0 var(--accent-coral);
+}
+
+.wordmark {
+  font-size: 40px;
+  color: var(--text-primary);
+}
+
+.wordmark > span {
+  color: var(--primary);
+}
+
+.login-card h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.auth-form input {
+  min-height: 40px;
+  color: var(--text-primary);
+  background: var(--transparency-block);
+}
+
+.auth-submit {
+  min-height: 40px;
+}
+
+@media (min-width: 1600px) {
+  .sidebar {
+    width: 252px;
+  }
+}
+
+@media (max-width: 1020px) {
+  .context-panel.workbench-context {
+    background: var(--background-panel);
+    box-shadow: var(--shadow-panel);
+  }
+}
+
+@media (max-width: 760px) {
+  .workbench-header {
+    height: 52px;
+  }
+
+  .workbench-header [data-slot="button"] {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .sidebar {
+    width: min(300px, 88vw);
+    padding: 18px 14px 14px;
+  }
+
+  .nav-row,
+  .thread-row,
+  .chat-contact-list .chat-contact {
+    min-height: 44px;
+  }
+
+  .content-page {
+    padding: 28px 20px;
+  }
+
+  .page-intro h1 {
+    font-size: 22px;
+  }
+
+  .workspace-welcome {
+    padding: 28px 18px 44px;
+  }
+
+  .login-screen {
+    padding: 16px;
+  }
+
+  .login-card {
+    padding: 32px 24px;
+    border-radius: 14px;
+  }
+
+  .login-card::before {
+    top: 24px;
+    right: 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .member-row,
+  .task-row,
+  .document-row,
+  .resource-row,
+  .topic-list-row,
+  .flow-list > button,
+  .flow-pending,
+  .composer {
+    transition: none;
+  }
+}

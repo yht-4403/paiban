@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-06T02:15:00+08:00",
+  "title": "Design System: Accord",
+  "extensions": {
+    "colorMeta": {
+      "primary": {"role": "primary", "displayName": "Accord Cobalt", "canonical": "oklch(0.55 0.21 268)", "tonalRamp": ["oklch(0.97 0.02 268)", "oklch(0.93 0.05 268)", "oklch(0.86 0.09 268)", "oklch(0.76 0.14 268)", "oklch(0.66 0.18 268)", "oklch(0.55 0.21 268)", "oklch(0.47 0.19 268)", "oklch(0.38 0.15 268)"]},
+      "canvas": {"role": "neutral", "displayName": "Cool Canvas", "canonical": "oklch(0.965 0.009 268)", "tonalRamp": ["oklch(0.995 0.003 268)", "oklch(0.98 0.006 268)", "oklch(0.965 0.009 268)", "oklch(0.93 0.012 268)", "oklch(0.86 0.016 268)", "oklch(0.70 0.02 268)", "oklch(0.47 0.025 268)", "oklch(0.25 0.03 268)"]},
+      "spark-sun": {"role": "secondary", "displayName": "Signal Sun", "canonical": "oklch(0.88 0.17 95)", "tonalRamp": ["oklch(0.97 0.04 95)", "oklch(0.94 0.08 95)", "oklch(0.91 0.13 95)", "oklch(0.88 0.17 95)", "oklch(0.78 0.16 95)", "oklch(0.66 0.14 95)", "oklch(0.54 0.11 95)", "oklch(0.40 0.08 95)"]},
+      "spark-coral": {"role": "secondary", "displayName": "Action Coral", "canonical": "oklch(0.68 0.19 30)", "tonalRamp": ["oklch(0.96 0.03 30)", "oklch(0.91 0.07 30)", "oklch(0.83 0.12 30)", "oklch(0.74 0.16 30)", "oklch(0.68 0.19 30)", "oklch(0.57 0.18 30)", "oklch(0.46 0.14 30)", "oklch(0.34 0.10 30)"]},
+      "spark-violet": {"role": "secondary", "displayName": "Decision Violet", "canonical": "oklch(0.58 0.20 305)", "tonalRamp": ["oklch(0.96 0.03 305)", "oklch(0.91 0.07 305)", "oklch(0.82 0.12 305)", "oklch(0.70 0.17 305)", "oklch(0.58 0.20 305)", "oklch(0.49 0.18 305)", "oklch(0.40 0.14 305)", "oklch(0.31 0.10 305)"]}
+    },
+    "typographyMeta": {
+      "brand": {"displayName": "Accord Wordmark", "purpose": "Only for the product wordmark."},
+      "headline": {"displayName": "Product Headline", "purpose": "Page and empty-state headings."},
+      "body": {"displayName": "Readable Body", "purpose": "Messages, evidence and task content."},
+      "label": {"displayName": "Interface Label", "purpose": "Navigation, controls and status metadata."}
+    },
+    "shadows": [
+      {"name": "control-lift", "value": "0 1px 2px oklch(0.25 0.03 268 / 0.08)", "purpose": "Selected segmented control."},
+      {"name": "composer-lift", "value": "0 2px 8px oklch(0.25 0.03 268 / 0.08)", "purpose": "Primary composer surface."},
+      {"name": "window-lift", "value": "0 12px 32px oklch(0.25 0.03 268 / 0.12)", "purpose": "Authentication cards and true floating overlays, never the app shell."}
+    ],
+    "motion": [
+      {"name": "state-fast", "value": "150ms cubic-bezier(0.25, 1, 0.5, 1)", "purpose": "Hover, focus and active state changes."},
+      {"name": "panel-standard", "value": "220ms cubic-bezier(0.25, 1, 0.5, 1)", "purpose": "Panel and drawer transitions."}
+    ],
+    "breakpoints": [
+      {"name": "mobile", "value": "760px"},
+      {"name": "context-collapse", "value": "1020px"},
+      {"name": "wide", "value": "1600px"}
+    ]
+  },
+  "components": [
+    {"name": "Primary Button", "kind": "button", "refersTo": "button-primary", "description": "Single-screen primary action.", "html": "<button class=\"ds-btn-primary\">确认并继续</button>", "css": ".ds-btn-primary { height:32px; padding:0 12px; border:0; border-radius:6px; background:var(--primary); color:var(--primary-foreground); font:500 13px/1 var(--font-ui); transition:background 150ms cubic-bezier(.25,1,.5,1),transform 150ms cubic-bezier(.25,1,.5,1); } .ds-btn-primary:hover { background:var(--renderer-accent-pressed); } .ds-btn-primary:active { transform:translateY(1px); } .ds-btn-primary:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"},
+    {"name": "Secondary Button", "kind": "button", "description": "Quiet secondary action.", "html": "<button class=\"ds-btn-secondary\">稍后处理</button>", "css": ".ds-btn-secondary { height:32px; padding:0 12px; border:0; border-radius:6px; background:var(--transparency-block); color:var(--text-primary); font:500 13px/1 var(--font-ui); } .ds-btn-secondary:hover { background:var(--transparency-hover); } .ds-btn-secondary:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"},
+    {"name": "Product Input", "kind": "input", "refersTo": "input", "description": "Compact, high-contrast field.", "html": "<input class=\"ds-input\" value=\"资料交付顺序\" aria-label=\"任务名称\" />", "css": ".ds-input { height:32px; min-width:240px; padding:0 10px; border:1px solid var(--line-1); border-radius:6px; background:var(--transparency-block); color:var(--text-primary); font:400 13px/1 var(--font-ui); } .ds-input:hover { background:var(--transparency-hover); } .ds-input:focus-visible { border-color:var(--primary); outline:2px solid var(--border-focus); outline-offset:1px; }"},
+    {"name": "Active Navigation", "kind": "nav", "description": "Selected product destination.", "html": "<button class=\"ds-nav-active\">工作台</button>", "css": ".ds-nav-active { height:34px; padding:0 10px; border:0; border-radius:6px; background:var(--accent-bg); color:var(--primary); font:500 13px/1 var(--font-ui); } .ds-nav-active:hover { background:var(--transparency-active); } .ds-nav-active:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"},
+    {"name": "Status Chip", "kind": "chip", "description": "Text-backed semantic state.", "html": "<span class=\"ds-status\"><i></i>本人已确认</span>", "css": ".ds-status { display:inline-flex; align-items:center; gap:6px; height:20px; padding:0 7px; border-radius:4px; background:color-mix(in oklch,var(--state-success) 12%,var(--background-panel)); color:var(--state-success); font:500 11px/1 var(--font-ui); } .ds-status i { width:5px; height:5px; border-radius:50%; background:currentColor; }"},
+    {"name": "Composer", "kind": "custom", "refersTo": "composer", "description": "Primary work surface for a new request.", "html": "<div class=\"ds-composer\"><textarea aria-label=\"输入协作请求\" placeholder=\"描述要推进的事情…\"></textarea><div><span>工作空间 · 自动检索</span><button aria-label=\"发送消息\">↑</button></div></div>", "css": ".ds-composer { width:440px; padding:6px 0 8px; border:1px solid var(--line-1); border-radius:16px; background:var(--background-fronted); box-shadow:0 2px 8px oklch(0.25 0.03 268 / .08); } .ds-composer:focus-within { border-color:var(--primary); outline:2px solid var(--border-focus); } .ds-composer textarea { display:block; width:100%; min-height:72px; padding:12px 14px; border:0; resize:none; background:transparent; color:var(--text-primary); font:400 14px/1.7 var(--font-ui); } .ds-composer > div { display:flex; align-items:center; justify-content:space-between; padding:0 10px; color:var(--text-secondary); font:400 11px/1 var(--font-ui); } .ds-composer button { width:32px; height:32px; border:0; border-radius:50%; background:var(--primary); color:var(--primary-foreground); } .ds-composer button:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"}
+  ],
+  "narrative": {
+    "northStar": "可信任协作控制台",
+    "overview": "A calm, verifiable workbench where color marks action and state rather than decorating AI. Accord combines stable cool-neutral surfaces, a cobalt primary, and three rare collaboration sparks.",
+    "keyCharacteristics": ["Light by default", "Three clear surface layers", "One primary action per screen", "Rare dopamine color", "Tutti interaction compatibility"],
+    "rules": [
+      {"name": "Rare Color Rule", "body": "Saturated color carries no more than roughly ten percent of a screen's visual weight.", "section": "colors"},
+      {"name": "Flat-by-default Rule", "body": "Use spacing, tone and dividers before shadow.", "section": "elevation"}
+    ],
+    "dos": ["Use text and icons alongside semantic color.", "Keep message and evidence content visually dominant.", "Preserve Tutti keyboard and component behavior."],
+    "donts": ["Do not return to an all-gray anonymous AI console.", "Do not use neon gradients or decorative glassmorphism.", "Do not clone Kimi brand assets or layout pixels.", "Do not wrap every piece of information in an identical card."]
+  }
+}

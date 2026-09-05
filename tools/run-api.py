@@ -18,4 +18,4 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8786)
     parser.add_argument('--host', default='127.0.0.1')
     args = parser.parse_args()
-    uvicorn.run('accord_api.app:app', host=args.host, port=args.port, access_log=False)
+    uvicorn.run('accord_api.main:app', host=args.host, port=args.port, access_log=False)

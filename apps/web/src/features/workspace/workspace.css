@@ -7,7 +7,7 @@
 .sidebar-brand > span:last-child { max-width:88px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
 .folder-row { display:flex; align-items:center; gap:2px; min-height:34px; border-radius:6px; }
 .folder-row > button { flex-shrink:0; }
-.folder-name { flex:1; display:flex; align-items:center; gap:7px; min-width:0; text-align:left; color:var(--text-primary); font-size:12px; padding:6px 0; }
+.folder-name { flex:1; display:flex; align-items:center; gap:7px; min-width:0; text-align:left; color:var(--text-primary); font-size:13px; padding:6px 0; }
 .folder-name > span { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .folder-chevron-closed { transform:rotate(-90deg); }
 .folder-threads { padding-left:12px; border-left:1px solid var(--line-1); margin:2px 0 8px 10px; }
