@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>Accord 响应式验收</title>
+<style>body{margin:0;background:#eee;font:14px system-ui}header{height:48px;display:flex;align-items:center;gap:16px;padding:0 16px}iframe{display:block;width:390px;height:640px;border:0;background:white}main{overflow:auto}</style>
+<header><label>验收宽度 <select id="width"><option>390</option><option>768</option><option>1440</option></select></label><span>隔离预览，仅用于检查实际 iframe 视口内的响应式布局。</span></header>
+<main><iframe title="Accord 响应式页面" src="/"></iframe></main>
+<script>document.querySelector('select').addEventListener('change',e=>document.querySelector('iframe').style.width=e.target.value+'px')</script>
+</html>
