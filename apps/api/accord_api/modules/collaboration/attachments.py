@@ -1,5 +1,7 @@
+import base64
 import hashlib
 
+from accord_api.modules.collaboration.schemas import readable_attachment
 from accord_api.modules.knowledge.resources import create_resource
 from accord_api.modules.permissions.policy import thread_for
 from accord_api.platform.db import database as store
@@ -13,16 +15,17 @@ def _safe_name(value: str) -> str:
     return name
 
 
+def _size(item):
+    if readable_attachment(item.filename, item.mime_type):
+        return len(item.content.encode())
+    return len(base64.b64decode(item.content.split(',', 1)[1]))
+
+
 def save(db, uid, thread, message_id, items):
     if not items:
         return []
-    if (
-        thread['kind'] != 'workspace'
-        or thread['purpose'] != 'ordinary'
-        or thread['owner_id'] != uid
-        or thread['target_id'] != uid
-    ):
-        raise DomainError(422, '过程附件只用于自己的工作台。')
+    if thread['purpose'] != 'ordinary' or thread['kind'] not in ('workspace', 'peer', 'group'):
+        raise DomainError(422, '当前协作不支持过程附件。')
     result = []
     for item in items:
         name = _safe_name(item.filename)
@@ -40,7 +43,7 @@ def save(db, uid, thread, message_id, items):
                 name,
                 item.content,
                 item.mime_type or 'text/plain',
-                len(item.content.encode()),
+                _size(item),
                 digest,
                 store.now(),
             ),
@@ -58,6 +61,7 @@ def public_rows(db, uid, thread_ids):
             'id': row['id'],
             'thread_id': row['thread_id'],
             'message_id': row['message_id'],
+            'owner_id': row['owner_id'],
             'filename': row['filename'],
             'mime_type': row['mime_type'],
             'size': row['size'],
@@ -66,10 +70,28 @@ def public_rows(db, uid, thread_ids):
         }
         for row in db.execute(
             f"""SELECT * FROM accord_thread_attachments
-                WHERE owner_id=? AND thread_id IN ({placeholders}) ORDER BY created_at,rowid""",
-            (uid, *thread_ids),
+                WHERE thread_id IN ({placeholders}) ORDER BY created_at,rowid""",
+            tuple(thread_ids),
         )
     ]
+
+
+def read(*, attachment_id, uid):
+    with store.lock:
+        db = store.connection()
+        row = db.execute(
+            'SELECT * FROM accord_thread_attachments WHERE id=?', (attachment_id,)
+        ).fetchone()
+        if not row:
+            raise DomainError(404, '附件不存在。')
+        thread_for(uid, row['thread_id'], db)
+        return {
+            'id': row['id'],
+            'filename': row['filename'],
+            'mime_type': row['mime_type'],
+            'size': row['size'],
+            'content': row['content'],
+        }
 
 
 def publish(*, attachment_id, body, uid):
@@ -83,10 +105,12 @@ def publish(*, attachment_id, body, uid):
         if not row:
             raise DomainError(404, '附件不存在。')
         thread = thread_for(uid, row['thread_id'], db)
-        if thread['kind'] != 'workspace' or thread['owner_id'] != uid:
+        if thread['purpose'] != 'ordinary':
             raise DomainError(404, '附件不存在。')
         if row['published_resource_id']:
             return {'resource_id': row['published_resource_id']}
+        if not readable_attachment(row['filename'], row['mime_type']):
+            raise DomainError(422, '图片或原文件不能直接转为工作池文字资料。')
         title = row['filename'].rsplit('.', 1)[0].strip() or row['filename']
         resource_id = create_resource(db, uid, title, row['content'], scope='team')
         db.execute(

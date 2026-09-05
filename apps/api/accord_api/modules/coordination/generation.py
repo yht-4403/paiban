@@ -265,7 +265,7 @@ def execute(fid):
             if closing
             else '根据证据推荐 1–3 位最适合完成任务的人，理由对应其经验和当前状态。证据不足时 candidates=[]，说明缺什么，不编造适合的人。actions=[]。'
             if f['kind'] == 'assignment'
-            else '这是同步会：汇总已知进展、差异和未知项即可，candidates=[]，actions=[]；不能宣称真人参加会议或已做出决策。'
+            else '这是同步会：汇总已知进展、差异和未知项；如果仍需向具体成员核实，candidates 推荐最多 3 位最相关成员并说明要找他的原因，否则为空；actions=[]。不能宣称真人参加会议或已做出决策。'
             if f['kind'] == 'sync'
             else '这是决策会准备：推荐关键决策人、缺信息或进度未知的相关人；关键决策人不能因为已提供信息被排除。发起人最终选人。actions=[]。'
         )
@@ -305,6 +305,8 @@ def execute(fid):
             raise DomainError(422, '候选人重复，请重试。')
         if f['kind'] == 'assignment' and len(outcome.candidates) > 3:
             raise DomainError(422, '推荐人选超出三位，请重试。')
+        if f['kind'] == 'sync' and len(outcome.candidates) > 3:
+            raise DomainError(422, '后续联系人超出三位，请重试。')
         if f['kind'] == 'assignment' and any(
             not next((e['sources'] for e in evidence if e['person_id'] == c.person_id), [])
             for c in outcome.candidates

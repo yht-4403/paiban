@@ -187,12 +187,55 @@ class CollaborationTests(unittest.TestCase):
             self.assertTrue(retrieval.search(store.connection(),self.ids['lin'],[self.ids['su']],'导航已经收拢')['sources'])
 
         peer=self.start('lin','su')
-        rejected=self.post('lin',f'/threads/{peer}/attachment-messages',{
-            'body':'这不应进入同事会话',
-            'attachments':[{'filename':'private.txt','content':'private','mime_type':'text/plain'}],
+        peer_message=self.post('lin',f'/threads/{peer}/attachment-messages',{
+            'body':'请结合附件回答',
+            'attachments':[{'filename':'接口清单.txt','content':'待确认接口：会议回执','mime_type':'text/plain'}],
         })
-        self.assertEqual(rejected.status_code,422,rejected.text)
-        self.assertFalse(store.query_one('SELECT 1 FROM accord_thread_attachments WHERE thread_id=?',(peer,)))
+        self.assertEqual(peer_message.status_code,200,peer_message.text)
+        runtime.execute_run(peer_message.json()['run_id'])
+        peer_attachment=store.query_one('SELECT * FROM accord_thread_attachments WHERE thread_id=?',(peer,))
+        self.assertEqual(self.clients['su'].get('/api/threads/'+peer).status_code,404)
+        self.post('lin',f'/threads/{peer}/handoff',{'mode':'now'})
+        target_view=self.clients['su'].get('/api/threads/'+peer).json()
+        self.assertEqual(target_view['attachments'][0]['filename'],'接口清单.txt')
+        self.assertEqual(target_view['attachments'][0]['owner_id'],self.ids['lin'])
+        self.assertNotIn('待确认接口',json.dumps(target_view,ensure_ascii=False))
+        self.assertEqual(self.post('su',f"/attachments/{peer_attachment['id']}/publish").status_code,404)
+
+        image='data:image/png;base64,aGVsbG8='
+        binary=self.post('lin',f'/threads/{peer}/attachment-messages',{
+            'attachments':[{'filename':'界面截图.png','content':image,'mime_type':'image/png'}],
+        })
+        self.assertEqual(binary.status_code,200,binary.text)
+        self.assertIsNone(binary.json()['run_id'])
+        image_row=store.query_one(
+            "SELECT * FROM accord_thread_attachments WHERE thread_id=? AND filename='界面截图.png'",
+            (peer,),
+        )
+        self.assertEqual(image_row['size'],5)
+        self.assertEqual(self.clients['lin'].get(f"/api/attachments/{image_row['id']}").json()['content'],image)
+        self.assertEqual(self.clients['su'].get(f"/api/attachments/{image_row['id']}").status_code,200)
+        self.assertEqual(self.clients['zhou'].get(f"/api/attachments/{image_row['id']}").status_code,404)
+        self.assertEqual(self.post('lin',f"/attachments/{image_row['id']}/publish").status_code,422)
+
+        group=self.post('lin','/groups',{'member_ids':[self.ids['su'],self.ids['zhou']]}).json()['id']
+        group_file=self.post('su',f'/groups/{group}/messages',{
+            'attachments':[{'filename':'会议附件.pdf','content':'data:application/pdf;base64,JVBERi0=','mime_type':'application/pdf'}],
+        })
+        self.assertEqual(group_file.status_code,200,group_file.text)
+        group_view=self.clients['zhou'].get('/api/threads/'+group).json()
+        self.assertEqual(group_view['attachments'][0]['filename'],'会议附件.pdf')
+        self.assertEqual(self.clients['lin'].get(f"/api/attachments/{group_view['attachments'][0]['id']}").status_code,200)
+
+    def test_handoff_brief_uses_the_finished_agent_exchange(self):
+        tid=self.start()
+        self.send(tid,'路演主线是否已经确定？')
+        result=self.post('lin',f'/threads/{tid}/handoff',{'mode':'now','note':'请本人拍板最终措辞'})
+        self.assertEqual(result.status_code,200,result.text)
+        brief=self.clients['su'].get('/api/threads/'+tid).json()['thread']['handoff_note']
+        self.assertIn('需要处理：路演主线是否已经确定？',brief)
+        self.assertIn('Agent 已整理：',brief)
+        self.assertIn('发起人补充：请本人拍板最终措辞',brief)
 
     def test_confirmation_owned_atomic_and_idempotent(self):
         tid=self.start();self.handoff(tid)
@@ -212,6 +255,17 @@ class CollaborationTests(unittest.TestCase):
         self.assertNotIn(task_id,[t['id'] for t in self.state('zhou')['tasks']])
         self.assertEqual(self.post('lin',f'/tasks/{task_id}/status',{'status':'done'}).status_code,404)
         self.assertEqual(self.post('su',f'/tasks/{task_id}/status',{'status':'done'}).status_code,200)
+
+        operation=str(uuid4())
+        self.assertEqual(self.post('lin',f'/tasks/{task_id}/delete',operation=operation).status_code,404)
+        deleted=self.post('su',f'/tasks/{task_id}/delete',operation=operation)
+        self.assertEqual(deleted.status_code,200,deleted.text)
+        self.assertEqual(deleted.json(),{'deleted':True})
+        self.assertEqual(self.post('su',f'/tasks/{task_id}/delete',operation=operation).json(),{'deleted':True})
+        self.assertNotIn(task_id,[t['id'] for t in self.state('lin')['tasks']])
+        self.assertNotIn(task_id,[t['id'] for t in self.state('su')['tasks']])
+        self.assertFalse(store.query_one('SELECT 1 FROM accord_task_acl WHERE task_id=?',(task_id,)))
+        self.assertEqual(self.post('su',f'/tasks/{task_id}/delete').status_code,404)
 
     def test_confirmed_conversation_continues_without_new_agent_or_task(self):
         tid=self.start();self.handoff(tid)

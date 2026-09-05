@@ -12,6 +12,7 @@ from accord_api.modules.collaboration.schemas import (
     Message,
     NewThread,
     OpenChat,
+    TaskDelete,
     TaskStatus,
 )
 from accord_api.modules.identity import repository as identity_repository
@@ -187,6 +188,37 @@ def send_message(*, tid: str, body: Message, uid):
     return operate(uid, body, 'message:' + tid, run)
 
 
+def _handoff_brief(db, thread, note):
+    """Build a bounded brief from the actual work item instead of forwarding only a note."""
+    rows = db.execute(
+        """SELECT from_kind,from_unit,body,meta FROM messages
+        WHERE conversation_id=? AND from_kind IN ('human','agent') AND trim(body)!=''
+        ORDER BY rowid""",
+        (thread['id'],),
+    ).fetchall()
+    requester = [row['body'].strip() for row in rows if row['from_kind'] == 'human' and row['from_unit'] == thread['owner_id']]
+    answers = [
+        row['body'].strip()
+        for row in rows
+        if row['from_kind'] == 'agent'
+        and row['from_unit'] == thread['target_id']
+        and json.loads(row['meta']).get('status') == 'done'
+    ]
+
+    def compact(value, limit):
+        value = ' '.join(value.split())
+        return value if len(value) <= limit else value[: limit - 1].rstrip() + '…'
+
+    parts = []
+    if requester:
+        parts.append('需要处理：' + compact(requester[-1], 420))
+    if answers:
+        parts.append('Agent 已整理：' + compact(answers[-1], 720))
+    if note.strip():
+        parts.append('发起人补充：' + compact(note, 420))
+    return '\n'.join(parts)
+
+
 def handoff(*, tid: str, body: Handoff, uid):
     def run(db):
         row = thread_for(uid, tid, db)
@@ -237,9 +269,10 @@ def handoff(*, tid: str, body: Handoff, uid):
             except ValueError:
                 raise DomainError(422, '请选择未来的送达时间，时间必须包含时区。')
         status = 'waiting' if body.mode == 'now' else 'scheduled'
+        brief = _handoff_brief(db, row, body.note)
         db.execute(
             'UPDATE accord_threads SET status=?,delivery_at=?,handoff_note=?,updated_at=? WHERE id=?',
-            (status, delivery, body.note.strip(), store.now(), tid),
+            (status, delivery, brief, store.now(), tid),
         )
         _message(
             db,
@@ -298,6 +331,41 @@ def task_status(*, task_id: str, body: TaskStatus, uid):
         return {'status': body.status}
 
     return operate(uid, body, 'task_status:' + task_id, run)
+
+
+def delete_task(*, task_id: str, body: TaskDelete, uid):
+    def run(db):
+        task = db.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
+        if not task or task['assignee_id'] != uid:
+            raise DomainError(404, '待办不存在或需要负责人操作。')
+
+        now = store.now()
+        db.execute(
+            "UPDATE accord_flows SET status='cancelled',updated_at=? WHERE kind='task_summary' AND task_id=?",
+            (now, task_id),
+        )
+        db.execute(
+            """UPDATE accord_flow_calls SET status='cancelled'
+            WHERE status='running' AND flow_id IN (
+              SELECT id FROM accord_flows WHERE kind='task_summary' AND task_id=?
+            )""",
+            (task_id,),
+        )
+        db.execute(
+            "UPDATE accord_flow_actions SET status='dismissed',task_id='' WHERE task_id=?",
+            (task_id,),
+        )
+        db.execute(
+            "UPDATE accord_flows SET status='cancelled',task_id='',updated_at=? WHERE kind='assignment' AND task_id=?",
+            (now, task_id),
+        )
+        db.execute("UPDATE artifacts SET task_id='' WHERE task_id=?", (task_id,))
+        db.execute('DELETE FROM accord_task_priorities WHERE task_id=?', (task_id,))
+        db.execute('DELETE FROM accord_task_acl WHERE task_id=?', (task_id,))
+        db.execute('DELETE FROM tasks WHERE id=?', (task_id,))
+        return {'deleted': True}
+
+    return operate(uid, body, 'task_delete:' + task_id, run)
 
 
 def pair_threads(db, uid, peer):

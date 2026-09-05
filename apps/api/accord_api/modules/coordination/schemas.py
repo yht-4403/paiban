@@ -23,6 +23,11 @@ class Sharing(Operation):
     enabled: bool
 
 
+class FollowUp(Operation):
+    action: Literal['create', 'dismiss']
+    kind: Literal['sync', 'decision'] = 'sync'
+
+
 class Candidate(BaseModel):
     model_config = ConfigDict(extra='forbid')
     person_id: str

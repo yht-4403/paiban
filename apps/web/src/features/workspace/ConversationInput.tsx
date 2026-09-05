@@ -63,10 +63,10 @@ export function ConversationInput({ thread, messages, state, onAction, composer 
       human={!!current || human || scheduled} onSend={send} initialValue={current === 'confirm' ? lastOwnReply : ''}
       allowEmpty={current === 'handoff'} sendDisabled={scheduled || (current === 'confirm' && !title.trim())}
       sendLabel={current === 'handoff' ? '发送给本人' : current === 'confirm' ? '确认承接' : undefined}
-      inputLabel={current === 'handoff' ? '转交补充说明' : current === 'confirm' ? '确认的结论与下一步' : undefined}
-      placeholder={current === 'handoff' ? '补充说明（可选）' : current === 'confirm' ? '结论与下一步' : scheduled ? '草稿（送达后可发送）' : undefined}
+      inputLabel={current === 'handoff' ? '转交补充' : current === 'confirm' ? '确认的结论与下一步' : undefined}
+      placeholder={current === 'handoff' ? '可补充一句（可选）' : current === 'confirm' ? '结论与下一步' : scheduled ? '草稿（送达后可发送）' : undefined}
       maxLength={current === 'handoff' ? 1000 : current === 'confirm' ? 4000 : 8000} audience={audience}
-      contextLabel={current === 'handoff' ? `共享本段 ${messages.length} 条消息` : current === 'confirm' ? `${recipient?.person_name}可见 · 加入我的待办` : scheduled ? `${timeLabel(thread!.delivery_at)}（北京时间）送达` : undefined}
+      contextLabel={current === 'handoff' ? `自动整理本段 ${messages.length} 条消息` : current === 'confirm' ? `${recipient?.person_name}可见 · 加入我的待办` : scheduled ? `${timeLabel(thread!.delivery_at)}（北京时间）送达` : undefined}
       accessory={current && <div className="conversation-action-fields">
         <div className="conversation-action-heading"><Avatar label={current === 'handoff' ? peer?.person_name || '本人' : '我'} initial={current === 'handoff' ? peer?.person_name[0] : state.members.find(member => member.id === state.me)?.person_name[0]} size={20} /><strong>{current === 'handoff' ? `转交给 ${peer?.person_name}` : '承接任务'}</strong><Button variant="ghost" size="icon-xs" aria-label="取消当前操作" disabled={composer.busy} onClick={() => { setAction(null); setError(''); }}><CloseIcon /></Button></div>
         {current === 'confirm' ? <Input aria-label="任务名称" value={title} maxLength={160} disabled={composer.busy} onChange={event => setTitle(event.target.value)} />

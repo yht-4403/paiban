@@ -23,6 +23,9 @@ def initialize():
         CREATE TABLE IF NOT EXISTS accord_flow_memories(
           flow_id TEXT NOT NULL, owner_id TEXT NOT NULL, resource_id TEXT NOT NULL,
           PRIMARY KEY(flow_id,owner_id));
+        CREATE TABLE IF NOT EXISTS accord_flow_followups(
+          flow_id TEXT PRIMARY KEY, status TEXT NOT NULL,
+          next_flow_id TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL);
         CREATE UNIQUE INDEX IF NOT EXISTS accord_flow_chat_close ON accord_flows(thread_id)
           WHERE kind='chat_summary';
         CREATE TABLE IF NOT EXISTS accord_flow_calls(

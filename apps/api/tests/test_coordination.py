@@ -420,7 +420,7 @@ with tempfile.TemporaryDirectory() as directory:
         self.assertEqual(json.loads(assignment_scope), source_ids)
         self.assertEqual(json.loads(summary_scope), [])
 
-    def test_decision_selection_meeting_summary_and_owner_only_suggestions(self):
+    def test_decision_meeting_owner_publishes_tasks_and_completion_unlocks_follow_up(self):
         fid = self.start('decision')
         self.run_flow(
             fid,
@@ -455,8 +455,7 @@ with tempfile.TemporaryDirectory() as directory:
         )
         self.assertEqual(result['status'], 'closed')
         action = next(a for a in result['actions'] if a['assignee_id'] == self.ids['su'])
-        self.post('lin', f'/flow-actions/{action["id"]}/accept', status=404)
-        assigned = self.post('su', f'/flow-actions/{action["id"]}/accept')['task_id']
+        assigned = self.post('lin', f'/flow-actions/{action["id"]}/accept')['task_id']
         self.assertEqual(
             self.post('su', f'/flow-actions/{action["id"]}/accept')['task_id'], assigned
         )
@@ -468,6 +467,26 @@ with tempfile.TemporaryDirectory() as directory:
         self.assertEqual(
             len(store.query('SELECT * FROM accord_task_acl WHERE thread_id=?', (tid,))), 2
         )
+        before = self.get('lin', '/flows/' + fid)['follow_up']
+        self.assertEqual(before['completed_count'], 0)
+        self.assertFalse(before['ready'])
+        self.post('su', f'/flows/{fid}/follow-up', {'action': 'create'}, status=403)
+        store.execute(
+            "UPDATE tasks SET status='done',artifact='已完成真实验收并上传结果' WHERE id IN (?,?)",
+            (assigned, second),
+        )
+        ready = self.get('lin', '/flows/' + fid)
+        self.assertTrue(ready['follow_up']['ready'])
+        self.assertEqual(ready['follow_up']['status'], 'suggested')
+        self.assertIn('已完成真实验收', next(a for a in ready['actions'] if a['task_id']==assigned)['task_artifact'])
+        self.assertTrue(next(f for f in self.get('lin','/state')['flows'] if f['id']==fid)['follow_up_ready'])
+        operation = str(uuid4())
+        continued = self.post('lin', f'/flows/{fid}/follow-up', {'action':'create','kind':'sync'}, operation=operation)
+        self.assertEqual(self.post('lin', f'/flows/{fid}/follow-up', {'action':'create','kind':'sync'}, operation=operation)['id'],continued['id'])
+        next_flow = self.get('lin','/flows/'+continued['id'])
+        self.assertEqual(next_flow['kind'],'sync')
+        self.assertEqual(next_flow['status'],'queued')
+        self.assertFalse(next(f for f in self.get('lin','/state')['flows'] if f['id']==fid)['follow_up_ready'])
 
     def peer(self):
         tid = self.post('lin', '/threads', {'target_id': self.ids['su']})['id']

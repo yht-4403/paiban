@@ -1,6 +1,7 @@
 import hashlib
 import json
 
+from accord_api.modules.collaboration.schemas import readable_attachment
 from accord_api.modules.knowledge.bindings import effective, expand
 from accord_api.modules.knowledge.resources import available
 from accord_api.modules.permissions import policy as access
@@ -66,6 +67,8 @@ def manifest(db, uid, tid, user_mid, extra_ids=None):
                 ORDER BY created_at DESC,rowid DESC""",
             (tid, uid, *message_ids),
         ):
+            if not readable_attachment(item['filename'], item['mime_type']):
+                continue
             if len(item['content']) > attachment_budget:
                 continue
             attachments.append(

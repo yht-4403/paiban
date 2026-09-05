@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from accord_api.modules.coordination import service, task_completion
-from accord_api.modules.coordination.schemas import Choose, Sharing, Start
+from accord_api.modules.coordination.schemas import Choose, FollowUp, Sharing, Start
 from accord_api.modules.identity.session import principal
 from accord_api.platform.commands import Operation
 
@@ -31,6 +31,11 @@ def finish(fid: str, body: Operation, uid=Depends(principal)):
 @router.post('/api/flows/{fid}/retry')
 def retry(fid: str, body: Operation, uid=Depends(principal)):
     return service.retry(body, uid, fid)
+
+
+@router.post('/api/flows/{fid}/follow-up')
+def follow_up(fid: str, body: FollowUp, uid=Depends(principal)):
+    return service.continue_flow(body, uid, fid)
 
 
 @router.post('/api/flow-actions/{aid}/accept')

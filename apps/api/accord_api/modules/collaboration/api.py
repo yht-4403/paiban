@@ -9,6 +9,7 @@ from accord_api.modules.collaboration.schemas import (
     NewThread,
     OpenChat,
     PublishAttachment,
+    TaskDelete,
     TaskStatus,
 )
 from accord_api.modules.identity.session import principal
@@ -41,6 +42,11 @@ def publish_attachment(attachment_id: str, body: PublishAttachment, uid=Depends(
     return attachments.publish(attachment_id=attachment_id, body=body, uid=uid)
 
 
+@router.get('/api/attachments/{attachment_id}')
+def read_attachment(attachment_id: str, uid=Depends(principal)):
+    return attachments.read(attachment_id=attachment_id, uid=uid)
+
+
 @router.post('/api/threads/{tid}/handoff')
 def handoff(tid: str, body: Handoff, uid=Depends(principal)):
     return service.handoff(tid=tid, body=body, uid=uid)
@@ -54,6 +60,11 @@ def confirm(tid: str, body: Confirmation, uid=Depends(principal)):
 @router.post('/api/tasks/{task_id}/status')
 def task_status(task_id: str, body: TaskStatus, uid=Depends(principal)):
     return service.task_status(task_id=task_id, body=body, uid=uid)
+
+
+@router.post('/api/tasks/{task_id}/delete')
+def delete_task(task_id: str, body: TaskDelete, uid=Depends(principal)):
+    return service.delete_task(task_id=task_id, body=body, uid=uid)
 
 
 @router.post('/api/chats/open')

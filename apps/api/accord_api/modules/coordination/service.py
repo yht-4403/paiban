@@ -99,6 +99,7 @@ def list_flows(db, uid):
         'SELECT id,owner_id,kind,title,status,thread_id,task_id,member_ids,created_at,updated_at FROM accord_flows ORDER BY updated_at DESC'
     ):
         if can_view(db, uid, row):
+            next_meeting = follow_up(db, row['id'])
             result.append(
                 {
                     **dict(row),
@@ -107,6 +108,8 @@ def list_flows(db, uid):
                         "SELECT count(*) FROM accord_flow_actions WHERE flow_id=? AND assignee_id=? AND status='suggested'",
                         (row['id'], uid),
                     ).fetchone()[0],
+                    'follow_up_ready': next_meeting['ready']
+                    and next_meeting['status'] == 'suggested',
                 }
             )
     return result
@@ -149,11 +152,36 @@ def detail(uid, fid):
             'actions': [
                 dict(r)
                 for r in db.execute(
-                    'SELECT a.*,t.status AS task_status FROM accord_flow_actions a LEFT JOIN tasks t ON t.id=a.task_id WHERE a.flow_id=?',
+                    'SELECT a.*,t.status AS task_status,t.artifact AS task_artifact FROM accord_flow_actions a LEFT JOIN tasks t ON t.id=a.task_id WHERE a.flow_id=?',
                     (fid,),
                 )
             ],
+            'follow_up': follow_up(db, fid),
         }
+
+
+def follow_up(db, fid):
+    saved = db.execute(
+        'SELECT status,next_flow_id FROM accord_flow_followups WHERE flow_id=?', (fid,)
+    ).fetchone()
+    rows = db.execute(
+        """SELECT a.status,t.status AS task_status FROM accord_flow_actions a
+        LEFT JOIN tasks t ON t.id=a.task_id WHERE a.flow_id=?""",
+        (fid,),
+    ).fetchall()
+    accepted = [row for row in rows if row['status'] == 'accepted']
+    ready = bool(
+        accepted
+        and not any(row['status'] == 'suggested' for row in rows)
+        and all(row['task_status'] == 'done' for row in accepted)
+    )
+    return {
+        'ready': ready,
+        'status': saved['status'] if saved else ('suggested' if ready else 'waiting'),
+        'next_flow_id': saved['next_flow_id'] if saved else '',
+        'completed_count': sum(row['task_status'] == 'done' for row in accepted),
+        'task_count': len(accepted),
+    }
 
 
 def set_sharing(body, uid):
@@ -329,23 +357,25 @@ def finish_meeting(body, uid, fid):
 def action(body, uid, action_id, accept):
     def run(db):
         row = db.execute(
-            'SELECT * FROM accord_flow_actions WHERE id=? AND assignee_id=?', (action_id, uid)
+            'SELECT * FROM accord_flow_actions WHERE id=?', (action_id,)
         ).fetchone()
         if not row:
+            raise DomainError(404, '建议不存在。')
+        f = flow_for(db, uid, row['flow_id'])
+        if uid not in (row['assignee_id'], f['owner_id']):
             raise DomainError(404, '建议不存在或需要负责人操作。')
         if row['status'] != 'suggested':
             return {'task_id': row['task_id']}
-        f = flow_for(db, uid, row['flow_id'])
         task_id = ''
         if accept:
             task_id, _ = create_task(
                 db,
                 f['owner_id'],
-                uid,
+                row['assignee_id'],
                 row['title'],
                 row['detail'],
                 f['thread_id'],
-                reason='本人加入',
+                reason='会议分配' if uid == f['owner_id'] else '本人加入',
             )
         db.execute(
             'UPDATE accord_flow_actions SET status=?,task_id=? WHERE id=?',
@@ -354,6 +384,46 @@ def action(body, uid, action_id, accept):
         return {'task_id': task_id}
 
     return operate(uid, body, 'flow:action:' + action_id + str(accept), run)
+
+
+def continue_flow(body, uid, fid):
+    def run(db):
+        f = flow_for(db, uid, fid)
+        if uid != f['owner_id']:
+            raise DomainError(403, '由会议发起人决定是否继续。')
+        status = follow_up(db, fid)
+        if status['status'] == 'created':
+            return {'id': status['next_flow_id']}
+        if not status['ready']:
+            raise DomainError(409, '关联待办尚未全部完成。')
+        if body.action == 'dismiss':
+            db.execute(
+                """INSERT INTO accord_flow_followups(flow_id,status,next_flow_id,updated_at)
+                VALUES(?,'dismissed','',?) ON CONFLICT(flow_id) DO UPDATE SET
+                status='dismissed',next_flow_id='',updated_at=excluded.updated_at""",
+                (fid, store.now()),
+            )
+            return {'id': ''}
+        result = json.loads(f['result'])
+        title = text('跟进：' + f['title'])[:160]
+        next_result = insert(
+            db,
+            uid,
+            body.kind,
+            title,
+            '上一轮会议的关联待办已经全部完成。请结合成员最新共享资料与待办完成结果，汇总新增事实、仍未解决的问题，并判断下一步。\n\n上一轮纪要：'
+            + result.get('summary', '')[:4000],
+            json.loads(f['member_ids']),
+        )
+        db.execute(
+            """INSERT INTO accord_flow_followups(flow_id,status,next_flow_id,updated_at)
+            VALUES(?,'created',?,?) ON CONFLICT(flow_id) DO UPDATE SET
+            status='created',next_flow_id=excluded.next_flow_id,updated_at=excluded.updated_at""",
+            (fid, next_result['id'], store.now()),
+        )
+        return next_result
+
+    return operate(uid, body, 'flow:follow-up:' + fid + ':' + body.action, run)
 
 
 def retry(body, uid, fid):

@@ -9,7 +9,7 @@ export type Thread = { id: string; owner_id: string; target_id: string; title: s
   purpose: 'ordinary' | 'exploration' | 'review' | 'handoff'; round_id: string; folder_id: string; placement_version: number };
 export type ResourceRef = { id: string; version: number; title?: string };
 export type ProcessAttachmentInput = { filename: string; content: string; mime_type: string };
-export type ProcessAttachment = { id: string; thread_id: string; message_id: string; filename: string; mime_type: string; size: number; published_resource_id: string; created_at: string };
+export type ProcessAttachment = { id: string; thread_id: string; message_id: string; owner_id: string; filename: string; mime_type: string; size: number; published_resource_id: string; created_at: string };
 export type Document = { id: string; unit_id: string; title: string; body: string; created_at: string; version: number; scope: 'private' | 'team' | 'round'; kind: 'note' | 'collection' | 'brief' | 'proposal' | 'decision' | 'memory' | 'external'; round_id: string; refs: ResourceRef[] };
 export type ContentConnection = { id:string; provider:'lark_doc'; locator:string; external_id:string; title:string; resource_id:string; enabled:boolean; status:'ready'|'syncing'|'error'|'disconnected'; external_revision:string; error_code:string; checked_at:string; synced_at:string; version:number; scope:'private'|'team'; resource_version:number };
 export type Material = Omit<Document, 'body'> & { origin?: 'folder' | 'thread' | 'round' };

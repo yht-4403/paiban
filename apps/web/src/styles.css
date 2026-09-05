@@ -320,3 +320,5 @@ svg { flex-shrink: 0; }
 @media(prefers-reduced-motion:no-preference) {
   :is(.workspace-mode>button,.work-filters>button,.context-doc,.folder-chat-row,.document-row,.resource-open) { transition: background-color 120ms ease-out,color 120ms ease-out; }
 }
+.message-attachments .attachment-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: 13px; }
+.message-attachments .attachment-name:hover { text-decoration: underline; }

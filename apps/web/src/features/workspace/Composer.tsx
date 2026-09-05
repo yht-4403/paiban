@@ -23,6 +23,14 @@ export function Composer({ folders, documents, onSend, busy, human=false, runnin
   const toggle=(id:string,selected:boolean)=> { if (context && onBind) onBind(id,selected); else setSources(items=>selected ? [...new Set([...items,id])] : items.filter(item=>item!==id)); };
   useEffect(() => { if(value)sessionStorage.setItem(draftId,value);else sessionStorage.removeItem(draftId); },[draftId,value]);
   useEffect(() => {
+    const insert = (event: Event) => {
+      const text = (event as CustomEvent<string>).detail;
+      if (typeof text === 'string' && text.trim()) setValue(current => current ? `${current}\n\n${text}` : text);
+    };
+    window.addEventListener('accord:insert-text', insert);
+    return () => window.removeEventListener('accord:insert-text', insert);
+  }, []);
+  useEffect(() => {
     if (context || human) return;
     const select = (event: Event) => {
       const id = (event as CustomEvent<string>).detail;
@@ -32,7 +40,28 @@ export function Composer({ folders, documents, onSend, busy, human=false, runnin
     return () => window.removeEventListener('accord:select-resource',select);
   },[context,human,documents]);
   useEffect(()=>{const release=()=>setTutorialExpected(null);window.addEventListener('accord:tutorial-release',release);return()=>window.removeEventListener('accord:tutorial-release',release);},[]);
-  const addFiles=async(files:File[])=>{setAttachmentError('');if(!allowAttachments||!files.length)return;const next=[...attachments];for(const file of files){if(next.length>=5){setAttachmentError('一次最多加入 5 个附件。');break;}if(file.size>256000){setAttachmentError(`${file.name} 超过 256 KB。`);continue;}const ext=file.name.split('.').pop()?.toLowerCase()||'';if(!file.type.startsWith('text/')&&!['md','txt','csv','json','yaml','yml','log','ts','tsx','js','jsx','py','html','css'].includes(ext)){setAttachmentError(`${file.name} 暂不支持读取。`);continue;}const content=await file.text();if(!content.trim()){setAttachmentError(`${file.name} 没有可读取的文字。`);continue;}if(next.reduce((sum,item)=>sum+item.content.length,0)+content.length>64000){setAttachmentError('附件总内容不能超过 64,000 个字符。');break;}next.push({filename:file.name,content,mime_type:file.type||'text/plain'});}setAttachments(next);};
+  const addFiles=async(files:File[])=>{
+    setAttachmentError('');if(!allowAttachments||!files.length)return;
+    const next=[...attachments];
+    const textExtensions=new Set(['md','markdown','txt','csv','json','yaml','yml','log','ts','tsx','js','jsx','py','html','css']);
+    const binaryExtensions=new Set(['png','jpg','jpeg','gif','webp','pdf','doc','docx','ppt','pptx','xls','xlsx']);
+    const asDataUrl=(file:File)=>new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>typeof reader.result==='string'?resolve(reader.result):reject(new Error('附件读取失败。'));reader.onerror=()=>reject(new Error('附件读取失败。'));reader.readAsDataURL(file);});
+    for(const file of files){
+      if(next.length>=5){setAttachmentError('一次最多加入 5 个附件。');break;}
+      const ext=file.name.split('.').pop()?.toLowerCase()||'';
+      const isText=file.type.startsWith('text/')||textExtensions.has(ext);
+      if(!isText&&!file.type.startsWith('image/')&&!binaryExtensions.has(ext)){setAttachmentError(`${file.name} 暂不支持。`);continue;}
+      if(file.size>(isText?256000:1000000)){setAttachmentError(`${file.name} 超过 ${isText?'256 KB':'1 MB'}。`);continue;}
+      const mime=file.type||({pdf:'application/pdf',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',ppt:'application/vnd.ms-powerpoint',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'} as Record<string,string>)[ext]||'application/octet-stream';
+      const content=isText?await file.text():await asDataUrl(file);
+      if(!content.trim()){setAttachmentError(`${file.name} 没有可读取的内容。`);continue;}
+      const textTotal=next.filter(item=>item.mime_type.startsWith('text/')||textExtensions.has(item.filename.split('.').pop()?.toLowerCase()||'')).reduce((sum,item)=>sum+item.content.length,0)+(isText?content.length:0);
+      if(textTotal>64000){setAttachmentError('文字附件总内容不能超过 64,000 个字符。');break;}
+      if(next.reduce((sum,item)=>sum+item.content.length,0)+content.length>4200000){setAttachmentError('附件总大小不能超过 3 MB。');break;}
+      next.push({filename:file.name||`粘贴的图片.${ext||'png'}`,content,mime_type:mime});
+    }
+    setAttachments(next);
+  };
   const cannotSend = (!allowEmpty && !value.trim() && !attachments.length) || value.length > maxLength || busy || !!running || sendDisabled;
   const clearDraft=()=>{sessionStorage.removeItem(draftId);sessionStorage.removeItem(draftId+'.sources');sessionStorage.removeItem(draftId+'.attachments');setValue('');setSources([]);setAttachments([]);};
   const send = async () => { if (cannotSend||tutorialExpected) return false; const sent=await onSend(value.trim(),context ? [] : sources,attachments); if (sent) clearDraft(); return sent; };
@@ -49,7 +78,7 @@ export function Composer({ folders, documents, onSend, busy, human=false, runnin
     if (value !== payload.expectedValue) throw new Error('固定演练问题已被修改。请重试当前步骤，恢复预填内容后再发送。');
     if (attachments.length) throw new Error('固定演练问题不包含附件。请移除附件后重试。');
     const sourceIds=[...new Set(payload.sourceIds)];
-    if(!sourceIds.length||sourceIds.length!==payload.sourceIds.length||sourceIds.some(id=>!documents.some(document=>document.id===id)))throw new Error('演练指定的共享资料没有完整载入，请稍后重试。');
+    if(sourceIds.length!==payload.sourceIds.length||sourceIds.some(id=>!documents.some(document=>document.id===id)))throw new Error('演练指定的共享资料没有完整载入，请稍后重试。');
     if (cannotSend) throw new Error(running ? 'Agent 仍在回答，请等待完成。' : busy ? '当前操作仍在保存，请稍后重试。' : '请先确认输入框内的演练问题。');
     if (!await onSend(payload.expectedValue,sourceIds,[])) throw new Error('消息没有发送，请查看页面提示后重试。');
     setTutorialExpected(null);
@@ -63,7 +92,7 @@ export function Composer({ folders, documents, onSend, busy, human=false, runnin
     <Textarea data-tour="composer-input" aria-label={inputLabel || (human ? '回复本人' : '输入协作请求')} placeholder={placeholder || (human ? '回复…' : '输入消息…')} value={value} disabled={busy} maxLength={maxLength}
       onPaste={event=>{if(allowAttachments&&event.clipboardData.files.length){event.preventDefault();void addFiles(Array.from(event.clipboardData.files));}}} onChange={event=>setValue(event.target.value)} onKeyDown={event=> { if (onMention && event.key==='@' && !event.nativeEvent.isComposing && (event.currentTarget.selectionStart===0 || /\s/.test(value[event.currentTarget.selectionStart-1]))) { event.preventDefault(); onMention(); return; } if (event.key==='Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
     {(error||attachmentError) && <p className="composer-error" role="alert">{error||attachmentError}</p>}
-    <div className="composer-toolbar"><div className="composer-left">{allowAttachments&&<><input ref={fileInput} className="visually-hidden" type="file" multiple accept="text/*,.md,.csv,.json,.yaml,.yml,.log,.ts,.tsx,.js,.jsx,.py,.html,.css" onChange={event=>{void addFiles(Array.from(event.target.files||[]));event.currentTarget.value='';}}/><Button variant="ghost" size="icon-xs" aria-label="加入本轮附件" title="加入本轮附件" onClick={()=>fileInput.current?.click()}><UploadIcon/></Button></>}<span className="composer-audience">{audience || (human ? '本人会话' : workspace)}</span></div><div className="composer-right">{!human && <span className="composer-mode">{model}</span>}{running ? <Button size="icon" variant="secondary" aria-label="停止生成" onClick={onStop} disabled={busy}><span className="stop-glyph" /></Button> : <Button data-tour="composer-send" className={`send-button${sendLabel ? ' send-action' : ''}`} size={sendLabel ? 'sm' : 'icon'} title={sendLabel || '发送 · Enter（Shift+Enter 换行）'} aria-label={sendLabel || '发送消息'} disabled={cannotSend||!!tutorialExpected} onClick={()=>void send()}>{busy ? <LoadingIcon /> : sendLabel || <ArrowRightIcon className="send-arrow" />}</Button>}</div></div>
+    <div className="composer-toolbar"><div className="composer-left">{allowAttachments&&<><input ref={fileInput} className="visually-hidden" type="file" multiple accept="text/*,image/*,.md,.csv,.json,.yaml,.yml,.log,.ts,.tsx,.js,.jsx,.py,.html,.css,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx" onChange={event=>{void addFiles(Array.from(event.target.files||[]));event.currentTarget.value='';}}/><Button variant="ghost" size="icon-xs" aria-label="加入本轮附件" title="加入本轮附件" onClick={()=>fileInput.current?.click()}><UploadIcon/></Button></>}<span className="composer-audience">{audience || (human ? '本人会话' : workspace)}</span></div><div className="composer-right">{!human && <span className="composer-mode">{model}</span>}{running ? <Button size="icon" variant="secondary" aria-label="停止生成" onClick={onStop} disabled={busy}><span className="stop-glyph" /></Button> : <Button data-tour="composer-send" className={`send-button${sendLabel ? ' send-action' : ''}`} size={sendLabel ? 'sm' : 'icon'} title={sendLabel || '发送 · Enter（Shift+Enter 换行）'} aria-label={sendLabel || '发送消息'} disabled={cannotSend||!!tutorialExpected} onClick={()=>void send()}>{busy ? <LoadingIcon /> : sendLabel || <ArrowRightIcon className="send-arrow" />}</Button>}</div></div>
     {contextLabel && <div className="composer-context"><span>{contextLabel}</span></div>}
   </div></div>;
 }

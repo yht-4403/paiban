@@ -45,7 +45,7 @@ export function FlowList({state,assignment,onOpen,onRefresh}:{state:State;assign
     if(!body)throw new Error(assignment?'请先填写任务目标。':'请先填写会议议题。');
     const result=await mutate<{id:string}>('/flows',{kind:assignment?'assignment':kind,title:flowTitle(body),body,member_ids:members,...(sourceIds.length?{source_ids:sourceIds}:{})});
     if(!result)throw new Error('提交没有完成，请查看页面提示后重试。');
-    setPrompt('');onOpen(result.id);return result;
+    setPrompt('');setOpen(false);sessionStorage.removeItem(key);onOpen(result.id);return result;
   };
   useTutorialAction('flow.fill',payload=>{
     if(payload.assignment!==assignment)throw new Error('演练操作区已经变化，请返回当前步骤重试。');
@@ -84,12 +84,12 @@ export function FlowResult({data,state,onRefresh}:{data:FlowData;state:State;onR
   const {mutate,busy,error}=useMutation(onRefresh);
   return <div className="flow-result">
     {data.result.summary && <Markdown>{data.result.summary}</Markdown>}
-    {data.actions.length>0 && <div className="flow-suggestions"><strong>待办建议</strong>{data.actions.map(a=><div className="flow-suggestion" key={a.id}><div><strong>{a.title}</strong><small>{state.members.find(m=>m.id===a.assignee_id)?.person_name} · {a.status==='accepted'?(a.task_status==='done'?'已完成':'已加入'):a.status==='dismissed'?'已忽略':'待选择'}</small>{a.detail && <p>{a.detail}</p>}</div>{a.assignee_id===state.me && a.status==='suggested' && <div className="flow-actions"><Button size="xs" variant="ghost" disabled={busy} onClick={()=>void mutate(`/flow-actions/${a.id}/dismiss`)}>忽略</Button><Button size="xs" disabled={busy} onClick={()=>void mutate(`/flow-actions/${a.id}/accept`)}>加入待办</Button></div>}</div>)}</div>}
+    {data.actions.length>0 && <div className="flow-suggestions"><strong>行动项</strong>{data.actions.map(a=><div className="flow-suggestion" data-tour-flow-action={a.id} key={a.id}><div><strong>{a.title}</strong><small>{state.members.find(m=>m.id===a.assignee_id)?.person_name} · {a.status==='accepted'?(a.task_status==='done'?'已完成':'已分配'):a.status==='dismissed'?'已忽略':'待确认'}</small>{a.detail && <p>{a.detail}</p>}{a.task_status==='done'&&a.task_artifact&&<p className="flow-task-receipt">完成回执：{a.task_artifact}</p>}</div>{(a.assignee_id===state.me||data.owner_id===state.me) && a.status==='suggested' && <div className="flow-actions"><Button size="xs" variant="ghost" disabled={busy} onClick={()=>void mutate(`/flow-actions/${a.id}/dismiss`)}>忽略</Button><Button size="xs" disabled={busy} onClick={()=>void mutate(`/flow-actions/${a.id}/accept`)}>{data.owner_id===state.me?'确认分配':'加入待办'}</Button></div>}</div>)}</div>}
     {error && <p role="alert" className="form-error">{error}</p>}
   </div>;
 }
 
-export function FlowPage({id,state,onBack,onThread,onRefresh}:{id:string;state:State;onBack:()=>void;onThread:(id:string)=>void;onRefresh:()=>Promise<void>}) {
+export function FlowPage({id,state,onBack,onThread,onMember,onFlow,onRefresh}:{id:string;state:State;onBack:()=>void;onThread:(id:string)=>void;onMember:(id:string)=>void;onFlow:(id:string)=>void;onRefresh:()=>Promise<void>}) {
   const {data,error,refresh}=useFlow(id);const [selected,setSelected]=useState<string[]>([]);
   const sync=async()=>{await refresh();await onRefresh();};const {mutate,busy,error:mutationError}=useMutation(sync);
   const suggested=data?.result.candidates?.map(c=>c.person_id).join(',')||'';
@@ -101,6 +101,8 @@ export function FlowPage({id,state,onBack,onThread,onRefresh}:{id:string;state:S
       const candidates=new Set(data.result.candidates?.map(candidate=>candidate.person_id)||[]);
       if(payload.memberIds.length!==1||!candidates.has(payload.memberIds[0]))throw new Error('真实推荐中没有体验者三，当前不会创建任务。');
     }
+    setSelected(payload.memberIds);
+    await new Promise(resolve=>window.setTimeout(resolve,420));
     const result=await mutate<{thread_id:string;task_id?:string}>(`/flows/${id}/choose`,{member_ids:payload.memberIds});
     if(!result)throw new Error('选择没有完成，请查看页面提示后重试。');
     if(data.kind==='decision')onThread(result.thread_id);
@@ -113,11 +115,13 @@ export function FlowPage({id,state,onBack,onThread,onRefresh}:{id:string;state:S
     {(error||data.error||mutationError) && <p className="form-error" role="alert">{error||data.error||mutationError}</p>}
     {owner && (data.status==='error'||data.sources_changed) && <Button variant="secondary" disabled={busy} onClick={()=>void mutate(`/flows/${id}/retry`)}>重新整理</Button>}
     <FlowResult data={data} state={state} onRefresh={sync}/>
+    {data.kind==='sync'&&data.status==='closed'&&!!data.result.candidates?.length&&<section className="flow-candidates flow-next-people"><h2>接下来找谁</h2>{data.result.candidates.filter(candidate=>candidate.person_id!==state.me).map(candidate=><div className="flow-next-person" key={candidate.person_id}><span><strong>{state.members.find(member=>member.id===candidate.person_id)?.person_name}</strong><small>{candidate.reason}</small></span><Button size="sm" variant="secondary" onClick={()=>onMember(candidate.person_id)}>去聊</Button></div>)}</section>}
     {owner && data.status==='ready' && !data.sources_changed && <section className="flow-candidates" data-tour="flow-candidates"><h2>{data.kind==='assignment'?'推荐人选':'参会人选'}</h2>{(data.kind==='assignment' ? data.result.candidates||[] : data.member_ids.map(person_id=>({person_id,reason:data.result.candidates?.find(c=>c.person_id===person_id)?.reason||'按需要邀请'}))).map(c=><label key={c.person_id} data-tour-person={c.person_id}><Checkbox checked={selected.includes(c.person_id)||data.kind==='decision'&&c.person_id===state.me} disabled={data.kind==='decision'&&c.person_id===state.me} onCheckedChange={checked=>setSelected(ids=>data.kind==='assignment'?(checked?[c.person_id]:[]):checked?[...ids,c.person_id]:ids.filter(id=>id!==c.person_id))}/><span><strong>{state.members.find(m=>m.id===c.person_id)?.person_name}</strong><small>{c.reason}</small></span></label>)}
       {!data.result.candidates?.length && data.kind==='assignment' && <p>证据不足，暂未推荐人选。</p>}
       <Button data-tour="flow-choose" disabled={busy||!selected.length} onClick={()=>void mutate<{thread_id:string}>(`/flows/${id}/choose`,{member_ids:selected}).then(result=>{if(result&&data.kind==='decision')onThread(result.thread_id);})}>{data.kind==='assignment'?'分配给选中成员':'开始会议'}</Button>
     </section>}
     {data.thread_id && ['live','assigned','closed'].includes(data.status) && <div className="flow-actions"><Button variant="secondary" onClick={()=>onThread(data.thread_id)}>{data.kind==='assignment'?'查看任务来源':'打开对话'}</Button>{owner&&data.status==='live'&&<Button disabled={busy} onClick={()=>void mutate(`/flows/${id}/finish`)}>结束会议</Button>}</div>}
+    {data.kind==='decision'&&data.status==='closed'&&data.follow_up&&data.follow_up.task_count>0&&<section className="flow-follow-up" data-tour="flow-follow-up"><div><strong>{data.follow_up.ready?'本轮待办已完成':`会后跟进 ${data.follow_up.completed_count}/${data.follow_up.task_count}`}</strong><small>{data.follow_up.ready?'可以带着完成结果继续同步':'成员完成后，结果会回到这里'}</small></div>{owner&&data.follow_up.status==='suggested'&&<div className="flow-actions"><Button size="sm" variant="ghost" disabled={busy} onClick={()=>void mutate(`/flows/${id}/follow-up`,{action:'dismiss'})}>本轮结束</Button><Button data-tour="flow-follow-up-create" size="sm" disabled={busy} onClick={()=>void mutate<{id:string}>(`/flows/${id}/follow-up`,{action:'create',kind:'sync'}).then(result=>result?.id&&onFlow(result.id))}>发起下一次同步</Button></div>}{data.follow_up.status==='created'&&data.follow_up.next_flow_id&&<Button size="sm" variant="secondary" onClick={()=>onFlow(data.follow_up!.next_flow_id)}>查看下一次同步</Button>}</section>}
     {data.evidence.length>0 && <details className="flow-evidence"><summary>个人 Agent 回复 · {data.evidence.length}</summary>{data.evidence.map(e=><section key={e.person_id}><strong>{state.members.find(m=>m.id===e.person_id)?.person_name} · Agent</strong><Markdown>{e.answer}</Markdown><small>{e.sources.map(s=>s.title).join(' · ')||'暂无获准证据'}</small></section>)}</details>}
   </div>;
 }

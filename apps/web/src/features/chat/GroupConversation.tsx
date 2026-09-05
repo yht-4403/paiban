@@ -1,22 +1,22 @@
 import { useState } from 'react';
 import { Avatar, Button, Input, Popover, PopoverContent, PopoverTrigger } from '@tutti-os/ui-system';
 import { CloseIcon, CheckIcon } from '@tutti-os/ui-system/icons';
-import type { State, Thread, ThreadData } from '../../shared/api';
+import type { ProcessAttachmentInput, State, Thread, ThreadData } from '../../shared/api';
 import { Composer } from '../workspace/Composer';
 import { GroupPicker } from './GroupPicker';
 
-export function GroupComposer({state,data,busy,onSend,onRun}: {
-  state:State;data:ThreadData;busy:boolean;onSend:(body:string,agentId:string)=>Promise<boolean>;onRun:(id:string,action:'stop'|'retry')=>void;
+export function GroupComposer({state,data,busy,onSend,onRun,humanOnly=false}: {
+  state:State;data:ThreadData;busy:boolean;humanOnly?:boolean;onSend:(body:string,agentId:string,attachments?:ProcessAttachmentInput[])=>Promise<boolean>;onRun:(id:string,action:'stop'|'retry')=>void;
 }) {
   const [agent,setAgent]=useState(''),[open,setOpen]=useState(false);
   const members=state.members.filter(member=>data.thread.member_ids?.includes(member.id));
   const target=members.find(member=>member.id===agent);
   const active=data.messages.find(message=>['queued','running'].includes(message.meta.status || ''));
-  return <Composer draftId={`accord.draft.${state.me}.${data.thread.id}.group`} documents={[]} onResource={()=>{}} human busy={busy}
-    model={state.model.label} workspace={state.project.name} audience="群成员可见" onSend={async body=>{const ok=await onSend(body,target?.id || '');if(ok)setAgent('');return ok;}}
+  return <Composer draftId={`accord.draft.${state.me}.${data.thread.id}.group`} documents={[]} onResource={()=>{}} human busy={busy} allowAttachments
+    model={state.model.label} workspace={state.project.name} audience="群成员可见" onSend={async (body,_,attachments)=>{const ok=await onSend(body,humanOnly?'':target?.id || '',attachments);if(ok)setAgent('');return ok;}}
     running={!!agent && !!active && active.meta.actor_id===state.me} onStop={()=>active?.meta.run_id && onRun(active.meta.run_id,'stop')} sendDisabled={!!agent && !!active}
-    inputLabel="群聊消息" placeholder="发消息，或 @ Agent" onMention={()=>setOpen(true)}
-    accessory={<div className="group-mentions">{active?.meta.actor_id===state.me && !agent && <Button variant="ghost" size="xs" onClick={()=>active.meta.run_id&&onRun(active.meta.run_id,'stop')}>停止回答</Button>}<Popover open={open} onOpenChange={setOpen}><PopoverTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="提及 Agent" title="提及 Agent">@</Button></PopoverTrigger><PopoverContent align="start" className="group-agent-picker"><strong>选择 Agent</strong>{members.map(member=><Button variant="ghost" key={member.id} onClick={()=>{setAgent(member.id);setOpen(false);}}><Avatar label={member.person_name} initial={member.person_name[0]} size={20} /><span>{member.person_name}</span><small>Agent</small></Button>)}</PopoverContent></Popover>{target && <span className="group-mention-tag">@{target.person_name} <small>Agent</small><Button variant="ghost" size="icon-xs" aria-label="取消提及" onClick={()=>setAgent('')}><CloseIcon /></Button></span>}</div>}
+    inputLabel={humanOnly?'会议发言':'群聊消息'} placeholder={humanOnly?'发送给参会人…':'发消息，或 @ Agent'} onMention={humanOnly?undefined:()=>setOpen(true)}
+    accessory={!humanOnly&&<div className="group-mentions">{active?.meta.actor_id===state.me && !agent && <Button variant="ghost" size="xs" onClick={()=>active.meta.run_id&&onRun(active.meta.run_id,'stop')}>停止回答</Button>}<Popover open={open} onOpenChange={setOpen}><PopoverTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="提及 Agent" title="提及 Agent">@</Button></PopoverTrigger><PopoverContent align="start" className="group-agent-picker"><strong>选择 Agent</strong>{members.map(member=><Button variant="ghost" key={member.id} onClick={()=>{setAgent(member.id);setOpen(false);}}><Avatar label={member.person_name} initial={member.person_name[0]} size={20} /><span>{member.person_name}</span><small>Agent</small></Button>)}</PopoverContent></Popover>{target && <span className="group-mention-tag">@{target.person_name} <small>Agent</small><Button variant="ghost" size="icon-xs" aria-label="取消提及" onClick={()=>setAgent('')}><CloseIcon /></Button></span>}</div>}
   />;
 }
 

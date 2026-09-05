@@ -1,4 +1,7 @@
+import json
+
 from accord_api.modules.agent_runs import service as runtime
+from accord_api.modules.collaboration import attachments
 from accord_api.modules.collaboration.groups_schemas import (
     AddMembers,
     CreateGroup,
@@ -145,10 +148,16 @@ def send_message(*, tid: str, body: GroupMessage, uid):
             tid,
             'human',
             uid,
-            text(body.body),
+            body.body.strip(),
             body.source_ids,
             meta={'agent_id': body.agent_id},
         )
+        attachment_ids = attachments.save(db, uid, group, mid, body.attachments)
+        if attachment_ids:
+            row = db.execute('SELECT meta FROM messages WHERE id=?', (mid,)).fetchone()
+            meta = json.loads(row['meta'])
+            meta['attachment_ids'] = attachment_ids
+            db.execute('UPDATE messages SET meta=? WHERE id=?', (json.dumps(meta), mid))
         rid = None
         if body.agent_id:
             assistant = message(db, tid, 'agent', body.agent_id, '')
