@@ -78,7 +78,7 @@ def enqueue(db, tid, uid, user_mid, assistant_mid, source_ids, previous_run_id=N
         == 'group'
     )
     rid = store.new_id('run')
-    model = agent.model_name()
+    model = model_settings.model_for(db, uid)
     effort = model_settings.effort_for(db, uid) if agent.supports_reasoning() else ''
     db.execute(
         'INSERT INTO accord_runs(id,thread_id,actor_id,user_message_id,assistant_message_id,status,model,source_ids,created_at,reasoning_effort) VALUES(?,?,?,?,?,?,?,?,?,?)',

@@ -408,6 +408,47 @@ class CollaborationTests(unittest.TestCase):
     def test_cross_origin_writes_rejected(self):
         self.assertEqual(self.clients['lin'].post('/api/auth/invite',headers={'Origin':'https://unrelated.example'},json={}).status_code,403)
 
+    def test_model_preferences_are_personal_allowlisted_and_snapshotted(self):
+        config = {
+            'ACCORD_LLM_PROVIDER': 'deepseek',
+            'ACCORD_LLM_BASE_URL': 'https://provider.test/v1',
+            'ACCORD_LLM_API_KEY': 'test-only',
+            'ACCORD_LLM_MODEL': 'deepseek-v4-pro',
+            'ACCORD_LLM_MODELS': (
+                'deepseek-v4-pro|DeepSeek V4 Pro,'
+                'deepseek-v4-flash|DeepSeek V4 Flash'
+            ),
+        }
+        with patch.dict(os.environ, config):
+            anonymous = TestClient(app).post(
+                '/api/profile/model',
+                json={'model':'deepseek-v4-flash','operation_id':str(uuid4())},
+            )
+            self.assertEqual(anonymous.status_code, 401)
+            self.assertEqual(
+                [item['id'] for item in self.state('lin')['model']['model_options']],
+                ['deepseek-v4-pro', 'deepseek-v4-flash'],
+            )
+            self.assertEqual(
+                self.post('lin', '/profile/model', {'model':'unlisted-model'}).status_code,
+                422,
+            )
+            self.assertEqual(
+                self.post('lin', '/profile/model', {'model':'deepseek-v4-flash'}).status_code,
+                200,
+            )
+            self.assertEqual(self.state('lin')['model']['label'], 'DeepSeek V4 Flash')
+            self.assertEqual(self.state('su')['model']['label'], 'DeepSeek V4 Pro')
+            tid = self.start('lin', 'lin')
+            rid = self.send(tid, execute=False).json()['run_id']
+            self.post('lin', '/profile/model', {'model':'deepseek-v4-pro'})
+            runtime.execute_run(rid)
+            self.assertEqual(self.mock.call_args.kwargs['model'], 'deepseek-v4-flash')
+            self.assertEqual(
+                store.query_one('SELECT model FROM accord_runs WHERE id=?',(rid,))['model'],
+                'deepseek-v4-flash',
+            )
+
     def test_reasoning_preferences_are_personal_validated_and_snapshotted(self):
         with patch.dict(os.environ, {'ACCORD_LLM_PROVIDER':'deepseek', 'ACCORD_LLM_REASONING_EFFORT':'max'}):
             self.assertEqual(TestClient(app).post('/api/profile/reasoning', json={'reasoning_effort':'low','operation_id':str(uuid4())}).status_code, 401)

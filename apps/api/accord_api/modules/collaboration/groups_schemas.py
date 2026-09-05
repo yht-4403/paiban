@@ -1,6 +1,10 @@
 from pydantic import Field, model_validator
 
-from accord_api.modules.collaboration.schemas import ProcessAttachment, readable_attachment
+from accord_api.modules.collaboration.schemas import (
+    MAX_TOTAL_ATTACHMENT_CONTENT_LENGTH,
+    ProcessAttachment,
+    readable_attachment,
+)
 from accord_api.platform.commands import Operation
 
 
@@ -29,6 +33,6 @@ class GroupMessage(Operation):
             raise ValueError('消息或附件不能为空。')
         if sum(len(item.content) for item in self.attachments if readable_attachment(item.filename, item.mime_type)) > 64000:
             raise ValueError('附件总内容不能超过 64000 个字符。')
-        if sum(len(item.content) for item in self.attachments) > 4200000:
-            raise ValueError('附件总大小不能超过 3 MB。')
+        if sum(len(item.content) for item in self.attachments) > MAX_TOTAL_ATTACHMENT_CONTENT_LENGTH:
+            raise ValueError('附件总大小不能超过 20 MB。')
         return self

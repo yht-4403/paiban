@@ -6,7 +6,9 @@ from accord_api.platform.ai.config import (
     REASONING_EFFORTS,
     configured,
     default_reasoning_effort,
+    model_label,
     model_name,
+    model_options,
     supports_reasoning,
 )
 from accord_api.platform.ai.errors import ModelError
@@ -16,6 +18,8 @@ __all__ = [
     'context_messages',
     'configured',
     'model_name',
+    'model_options',
+    'model_label',
     'supports_reasoning',
     'default_reasoning_effort',
     'REASONING_EFFORTS',

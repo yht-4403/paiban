@@ -9,7 +9,7 @@ from accord_api.modules.coordination import generation, service
 from accord_api.modules.knowledge import person_context
 from accord_api.modules.knowledge.resources import create_resource
 from accord_api.modules.permissions.policy import thread_for
-from accord_api.modules.preferences.service import effort_for
+from accord_api.modules.preferences.service import effort_for, model_for
 from accord_api.platform.commands import Operation, operate, text
 from accord_api.platform.db import database as store
 from accord_api.platform.errors import DomainError
@@ -171,6 +171,8 @@ def execute(fid):
         payload = json.loads(f['result'])
         mid = payload['message_id']
         uid = f['owner_id']
+        effort = effort_for(db, uid)
+        selected_model = model_for(db, uid)
         db.execute("UPDATE accord_flows SET status='running' WHERE id=?", (fid,))
         set_message(db, fid, mid, '', 'running')
 
@@ -205,11 +207,12 @@ def execute(fid):
                 },
             ],
             cancelled,
-            effort_for(store.connection(), uid),
+            effort,
             tool,
             lambda u: store.execute(
                 'UPDATE accord_flow_calls SET usage=? WHERE id=?', (json.dumps(u), cid)
             ),
+            selected_model=selected_model,
         )
         result = Result.model_validate_json(
             answer.strip().removeprefix('```json').removesuffix('```').strip()

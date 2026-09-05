@@ -77,12 +77,13 @@ class PersonTools:
         return result
 
 
-def model(messages, cancelled, effort, tool=None, on_usage=None):
+def model(messages, cancelled, effort, tool=None, on_usage=None, selected_model=None):
     result = provider.stream_answer(
         messages,
         [],
         lambda *_: None,
         cancelled,
+        model=selected_model,
         tool_context=tool,
         reasoning_effort=effort,
         on_usage=on_usage,
@@ -117,7 +118,9 @@ def new_call(fid, person):
         return cid
 
 
-def person_answer(fid, person, audience, question, effort, cancelled, source_ids=None):
+def person_answer(
+    fid, person, audience, question, effort, cancelled, source_ids=None, selected_model=None
+):
     tools = PersonTools(fid, person, audience, source_ids)
     unit = store.query_one('SELECT person_name FROM units WHERE id=?', (person,))
     cid = new_call(fid, person)
@@ -136,6 +139,7 @@ def person_answer(fid, person, audience, question, effort, cancelled, source_ids
             lambda usage: store.execute(
                 'UPDATE accord_flow_calls SET usage=? WHERE id=?', (json.dumps(usage), cid)
             ),
+            selected_model=selected_model,
         )
         if not tools.calls:
             raise ModelError('missing_evidence', '个人 Agent 尚未实际查阅上下文，请重试。')
@@ -215,6 +219,7 @@ def execute(fid):
             (store.now(), fid),
         )
         effort = preferences.effort_for(db, f['owner_id'])
+        selected_model = preferences.model_for(db, f['owner_id'])
 
     def cancelled():
         row = store.query_one('SELECT status FROM accord_flows WHERE id=?', (fid,))
@@ -240,6 +245,7 @@ def execute(fid):
                     effort,
                     cancelled,
                     source_ids,
+                    selected_model,
                 )
                 evidence.append(item)
                 # Save progress without displaying a fabricated completion percentage.
@@ -297,6 +303,7 @@ def execute(fid):
             on_usage=lambda usage: store.execute(
                 'UPDATE accord_flow_calls SET usage=? WHERE id=?', (json.dumps(usage), cid)
             ),
+            selected_model=selected_model,
         )
         outcome = decode(answer)
         if any(item.person_id not in people for item in [*outcome.candidates, *outcome.actions]):

@@ -40,7 +40,7 @@ class TaskCompletionTests(unittest.TestCase):
         return self.post('su', f'/tasks/{self.task}/tick', {'thread_id': self.tid})['id']
 
     def run_summary(self, fid, **outcome):
-        def model(messages, cancelled, effort, tool=None, on_usage=None):
+        def model(messages, cancelled, effort, tool=None, on_usage=None, **kwargs):
             self.assertIsNotNone(tool)
             tool.execute(uuid4().hex, 'person_context', {'query': ''})
             return json.dumps(outcome, ensure_ascii=False)

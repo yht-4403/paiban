@@ -24,7 +24,7 @@ export type Message = { id: string; conversation_id: string; from_kind: 'human' 
 export type Task = { updated_at?:string; assign_reason?:string; id: string; title: string; detail: string; status: string; assignee_id: string; creator_id: string; thread_id: string; priority: 'high'|'normal'|'low' };
 export type State = { flows?:Flow[]; context_sharing?:{source_kind:'conversation'|'state';source_id:string;enabled:number;version:number}[]; content_connections?:ContentConnection[]; me: string; members: Member[]; groups?: (Thread & {preview:string})[]; threads: Thread[]; archived_threads: Thread[]; tasks: Task[]; documents: Document[];
   folders: Folder[]; topics: TopicSummary[]; activity_preferences:{automatic:boolean;work_title:boolean;version:number};
-  model: { mode: string; label: string; requests_today: number; reported_tokens_today: number; daily_limit: number; reasoning_effort: ReasoningEffort; reasoning_options: ReasoningEffort[] };
+  model: { mode: string; label: string; selected_model: string; model_options: {id:string;label:string}[]; requests_today: number; reported_tokens_today: number; daily_limit: number; reasoning_effort: ReasoningEffort; reasoning_options: ReasoningEffort[] };
   account: { email: string; role: 'owner' | 'member' }; project: { name: string } };
 export type ThreadData = { thread: Thread; segments?: Thread[]; messages: Message[]; context: ThreadContext;
   attachments?: ProcessAttachment[];

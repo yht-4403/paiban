@@ -17,6 +17,9 @@ class NewThread(Operation):
 TEXT_EXTENSIONS = frozenset(
     {'md', 'markdown', 'txt', 'csv', 'json', 'yaml', 'yml', 'log', 'ts', 'tsx', 'js', 'jsx', 'py', 'html', 'css'}
 )
+MAX_BINARY_ATTACHMENT_BYTES = 8_000_000
+MAX_ATTACHMENT_CONTENT_LENGTH = 11_000_000
+MAX_TOTAL_ATTACHMENT_CONTENT_LENGTH = 28_000_000
 
 
 def readable_attachment(filename: str, mime_type: str) -> bool:
@@ -26,7 +29,7 @@ def readable_attachment(filename: str, mime_type: str) -> bool:
 
 class ProcessAttachment(BaseModel):
     filename: str = Field(min_length=1, max_length=160)
-    content: str = Field(min_length=1, max_length=1400000)
+    content: str = Field(min_length=1, max_length=MAX_ATTACHMENT_CONTENT_LENGTH)
     mime_type: str = Field(default='text/plain', max_length=100)
 
     @model_validator(mode='after')
@@ -42,8 +45,8 @@ class ProcessAttachment(BaseModel):
             raw = base64.b64decode(self.content[len(prefix) :], validate=True)
         except (ValueError, binascii.Error):
             raise ValueError('二进制附件格式无效。')
-        if len(raw) > 1000000:
-            raise ValueError('单个附件不能超过 1 MB。')
+        if len(raw) > MAX_BINARY_ATTACHMENT_BYTES:
+            raise ValueError('单个附件不能超过 8 MB。')
         return self
 
 
@@ -63,8 +66,8 @@ class AttachmentMessage(Operation):
             raise ValueError('消息或附件不能为空。')
         if sum(len(item.content) for item in self.attachments if readable_attachment(item.filename, item.mime_type)) > 64000:
             raise ValueError('附件总内容不能超过 64000 个字符。')
-        if sum(len(item.content) for item in self.attachments) > 4200000:
-            raise ValueError('附件总大小不能超过 3 MB。')
+        if sum(len(item.content) for item in self.attachments) > MAX_TOTAL_ATTACHMENT_CONTENT_LENGTH:
+            raise ValueError('附件总大小不能超过 20 MB。')
         return self
 
 

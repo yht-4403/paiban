@@ -62,7 +62,7 @@ class CoordinationTests(unittest.TestCase):
             'actions': [],
         }
 
-        def model(messages, cancelled, effort, tool=None, on_usage=None):
+        def model(messages, cancelled, effort, tool=None, on_usage=None, **kwargs):
             if tool:
                 result = tool.execute(uuid4().hex, 'person_context', {'query': '经验和待办'})
                 return '已实际读取 ' + str(len(result['sources'])) + ' 项获准上下文。'

@@ -64,6 +64,8 @@ def state(*, uid):
         from accord_api.modules.coordination.service import list_flows, sharing
         from accord_api.modules.knowledge.connectors import list_connections
 
+        selected_model = model_settings.public_settings(db, uid)
+
         return {
             'flows': list_flows(db, uid),
             'context_sharing': sharing(uid),
@@ -84,9 +86,9 @@ def state(*, uid):
             'topics': topics.list_rounds(db, uid),
             'model': {
                 'mode': 'model' if agent.configured() else 'unavailable',
-                'label': agent.model_name() if agent.configured() else '模型未连接',
                 **runtime.usage_for(uid),
-                **model_settings.public_settings(db, uid),
+                **selected_model,
+                'label': selected_model['label'] if agent.configured() else '模型未连接',
             },
             'activity_preferences': activity.preferences(db, uid),
             'account': auth.account(uid),
