@@ -6,11 +6,9 @@ Accord 是 AlxOrigin Team 的黑客松项目：以“人 + 专属 Agent”为协
 
 ## 当前状态
 
-2026-09-05：新版源码已进入 `apps/web` 与 `apps/api`。前端直接使用 Tutti UI System，已完成组件样板、亮暗工作台，以及“问 Agent → 找本人 → 本人确认 → 待办”的本地持久化流程。
+2026-09-05：新版在 `apps/web` 与 `apps/api` 中实现真实账号、邀请加入、个人会话、共享资料、找本人、本人确认任务与完成状态。前端沿用 Tutti UI System；当前模型已切换为 DeepSeek V4 Pro，默认最高思考（max），支持每个账号调整思考强度，已实际验证两轮资料读取与连续回答。
 
-[打开 Accord 工作台](http://127.0.0.1:5186) · [组件样板](http://127.0.0.1:5186/#gallery)。当前使用合成成员和共享资料；没有配置真实模型。身份选择仅用于本机演示，不能用于生产认证。
-
-比赛截止：**2026-09-06 12:00（北京时间 / UTC+8）**。新版本实测见 [004 验收记录](docs/产品规划/2026-09-05-004-Tutti工作台接入-验收记录.md)。旧 MVP 的问题仍记录在 003，不代表旧副本已修复；会议、真实模型和双机访问尚未验收。
+[打开 Accord 工作台](http://127.0.0.1:5186)。首次打开由使用者创建工作空间和自己的账号；没有预置成员或资料。当前为本机服务，团队公网部署、飞书 SSO、文件执行工具、会议和多 Agent 委托尚未完成。最新范围、缺口和证据见 [006 实施计划](docs/产品规划/2026-09-05-006-真实工作空间与模型接入-实施计划.md) 与 [006 验收记录](docs/产品规划/2026-09-05-006-真实工作空间与模型接入-验收记录.md)。004 记录保留为此前版本的历史验收。
 
 ## 安装与运行
 
@@ -20,31 +18,54 @@ Accord 是 AlxOrigin Team 的黑客松项目：以“人 + 专属 Agent”为协
 npm ci --ignore-scripts
 python3 -m venv .venv
 .venv/bin/python -m pip install -r apps/api/requirements.txt
+cp .env.example .env
+# 在本机 .env 填入模型配置，不提交真实密钥。
+chmod 600 .env
 python3 tools/dev-services.py start
 ```
 
-macOS 使用当前用户域 launchd，服务名 `com.accord.web`、`com.accord.api`，分别监听 `127.0.0.1:5186`、`127.0.0.1:8786`。启动脚本可重复执行；`stop` 只卸载这两个服务，`status` 查看状态。日志分别为 `/tmp/accord-web.log`、`/tmp/accord-api.log`。不影响旧 MVP 和 Tutti 参考服务。
+已有 `.env` 时保留它，不要覆盖。macOS 使用当前用户域 launchd，服务名 `com.accord.web`、`com.accord.api`，分别监听 `127.0.0.1:5186`、`127.0.0.1:8786`。`stop` 只停止这两个服务，`status` 查看状态。日志位于 `/tmp/accord-web.log`、`/tmp/accord-api.log`。配置改动后执行 `start` 重启。
 
-其他系统可在两个终端前台运行：
+其他系统可分别前台运行：
 
 ```bash
-ACCORD_DEMO=1 PYTHONPATH=apps/api .venv/bin/python -m uvicorn accord_api.app:app --host 127.0.0.1 --port 8786
+.venv/bin/python tools/run-api.py
 npm run dev
 ```
 
-`npm run build` 生成 `apps/web/dist`。目前开发服务通过 Vite 代理 `/api`，没有配置生产部署；不要把仅前端 dist 当作完整协作服务。
+`tools/run-api.py` 仅在服务端加载根目录 `.env`。模型 key 不进入 Vite 进程、浏览器或 launchd 配置。`npm run build` 生成 `apps/web/dist`；完整服务仍需要 API，当前没有公网生产部署入口。
 
-默认数据位于 `.local/accord-data`。复制 `.env.example` 为 `.env` 后可设置数据目录及模型配置；launchd 启动脚本只读取列出的 Accord 变量。三个模型变量全部配置后才会调用 OpenAI 兼容接口，需重新启动服务；本轮未验收任一真实供应商。前台启动不会自动加载 `.env`，需由终端环境提供变量。
+默认实际数据位于 `.local/workspace`；历史参考数据库保留在 `.local/accord-data`，不会自动迁入实际空间。隔离验收使用单独的数据目录和端口。SQLite、账号、会话和运行记录均在本地持久保存。
 
-## 本地演示
+## 临时团队预览
 
-1. 打开页面，选择林川；“找同事”中打开苏禾的 Agent，问工作台 UI 或联调资料。
-2. 另开标签页选择苏禾，确认此时没有该请求。
-3. 林川点击“找本人”，阅读共享范围、填写转交说明后提交。
-4. 苏禾从“待我拍板”进入，补充判断，填写任务名称与结论并确认承担任务。
-5. 双方“我的待办”可见同一条任务；仅苏禾可以标记完成。刷新后会话和任务仍保留。
+2026-09-05 按 JC 要求切换为同一局域网访问，公网隧道已关闭。当前地址为 `http://192.168.18.225:5188/`，队友连接同一 Wi-Fi 后用各自账号进入真实工作空间。登录页和 WebSocket 热更新已实测；换网络后用下面的 start / status 命令更新地址。
 
-这些姓名与资料为合成演示内容。状态每 3 秒轮询；独立标签页验收不等同于两台设备、正式账号或实时通知验收。
+```bash
+# 启动当天局域网共享，不需要隧道软件或账号
+python3 tools/preview-services.py start --lan
+python3 tools/preview-services.py status
+# 结束临时共享，本机开发服务不受影响
+python3 tools/preview-services.py stop
+```
+
+`com.accord.preview` 由 launchd 托管，前端仅监听当前 Wi-Fi / 以太网的局域网 IP，后端继续只监听本机 8786。前端模块可以被浏览器加载，仓库文档、后端源码、密钥和数据库不在允许范围；首次管理员创建接口在共享入口禁用。默认 start 采用局域网模式，公网模式必须显式选择 `--public`。运行状态保存在 `.local/preview/status.json`，日志为 `/tmp/accord-preview.log`，不包含模型 key。
+
+本次共享到 2026-09-06 00:00（北京时间）自动关闭。运行期间通过 caffeinate 防止空闲休眠，退出后自动释放；电脑仍须保持开机、联网，合盖或手动睡眠会影响访问。隧道进程重启可能更换地址。前端组件和样式通常热更新，部分变更会整页刷新；API 代码仍需重启后端，进行中的模型生成可能中断。Cloudflare Quick Tunnel 有并发限制且不支持 SSE，当前浏览器每秒轮询状态，不受该 SSE 限制影响。未来正式部署使用构建产物、云端 API 与持久数据卷，具体边界和验收见 [临时团队预览](docs/技术架构/2026-09-05-002-临时团队预览与正式部署-交接文档.md)。
+
+## 使用流程
+
+1. 创建工作空间，填写自己的姓名、邮箱和密码；后续用该账号登录。
+2. 创建者在设置中生成邀请码。另一个成员在同一站点用自己的账号信息和邀请码加入，每个码仅使用一次，24 小时到期。邮箱目前用作登录标识，尚无邮件验证或找回密码。
+3. 在工作台向 Agent 提问，或发布可向团队共享的资料。一般问题也会真实调用模型；没有共享依据时不编造团队事实。
+4. “找同事”先进入对方的 Agent 通道；点击“找本人”后，才把当前记录交给对方。指定送达时间由服务端后台处理。
+5. 对方阅读记录、填写结论并明确承担任务；双方可见该任务，仅负责人可以标记完成。
+
+消息先落库，再进入后台生成队列。上游使用流式接口，网页每秒读取持久状态，支持停止与失败重试；当前不是浏览器 SSE 推送。单个 API 进程最多并行两个生成任务，每人同时一个，默认每日每人 200 次请求，按北京时间计算。重启中断的生成会标记失败，避免自动重复调用；已排队而尚未调用的请求继续处理。
+
+模型使用 OpenAI 兼容协议，当前为 `deepseek-v4-pro`，请求显式启用 thinking，并默认使用 `reasoning_effort=max`。在右上角「工作空间设置 → 你的思考强度」选择轻量、深入或最高，账号偏好保存在服务端；修改影响下一次发送或重试，正在生成的回答使用发起时的档位。单次上游生成上限 65,536 tokens，整个回答默认限时 900 秒；最高档通常需要更多等待和用量。
+
+根目录 `.env` 使用 JC 本次提供的 DeepSeek 凭据，不再使用 ChengziCV 的千问凭据；不会修改其他项目配置。缺少配置或供应商调用失败时显示实际错误，不返回伪造答案。页面用量只统计服务商实际回传的 token，中断未回报的消耗不估算为零。配置、思考与工具协议、实测记录见 [003 DeepSeek 模型与思考配置](docs/技术架构/2026-09-05-003-DeepSeek模型与思考配置-交接文档.md)。
 
 ## 验证命令
 
@@ -52,10 +73,11 @@ npm run dev
 npm run typecheck
 npm run build
 npm run check:ui
+node --test tools/preview-boundary.test.mjs tools/browser-capabilities.test.mjs
 PYTHONPATH=apps/api .venv/bin/python -m unittest discover -s apps/api/tests -v
 ```
 
-UI 规则见 [004-Accord UI / UX](harness/规范/004-AccordUIUX设计规范.md)，依赖及团队代码来源见 [第三方记录](THIRD_PARTY_NOTICES.md)。开发用响应式预览为 `tools/viewport-preview.html`，不在生产构建入口中。
+UI 规则见 [004-Accord UI / UX](harness/规范/004-AccordUIUX设计规范.md)，依赖及团队代码来源见 [第三方记录](THIRD_PARTY_NOTICES.md)。开发用响应式预览为 `tools/viewport-preview.html`；组件检查页为开发环境的 `#gallery`，两者不出现在产品导航中。
 
 ## 从这里开始
 
@@ -87,30 +109,9 @@ accord/
 └── .local/                    # 本地数据、原始缓存与参考，不提交
 ```
 
-## 已运行的本地参考
+## 独立参考
 
-| 项目 | 使用方式 | 限制 |
-| --- | --- | --- |
-| 堡天 MVP | [打开本地页面](http://127.0.0.1:8765)；可选择“演示成员甲 / 乙” | 仅本机监听、合成数据、未配置模型 Key；界面里的 LAN 地址不代表已开双机访问 |
-| Tutti | 本机 **Tutti Dev** 桌面窗口 | 已启动桌面与 daemon，未验收真实模型和 VM 多人云端能力 |
-
-两个服务由当前用户域 launchd 管理，启动配置只在本地存在。
-
-```bash
-# 已加载时重启
-launchctl kickstart -k gui/$(id -u)/com.accord.baotian-mvp
-launchctl kickstart -k gui/$(id -u)/com.accord.tutti-reference
-
-# 停止并卸载指定服务
-launchctl bootout gui/$(id -u)/com.accord.baotian-mvp
-launchctl bootout gui/$(id -u)/com.accord.tutti-reference
-
-# 卸载后重新加载；已加载时不要重复 bootstrap
-launchctl bootstrap gui/$(id -u) /Users/JCProjects/accord/.local/runtime/com.accord.baotian-mvp.plist
-launchctl bootstrap gui/$(id -u) /Users/JCProjects/accord/.local/runtime/com.accord.tutti-reference.plist
-```
-
-MVP 日志：`/tmp/accord-baotian-mvp.log`；Tutti 日志：`/tmp/accord-tutti-reference.log`。上述是旧参考实例的配置与日志；新 Accord 的可复现安装入口见前文。
+Tutti 源码位于 `/Users/JCProjects/tutti`。团队旧 MVP 的参考文件保存在 `.local/references`，其已有服务使用 `com.accord.baotian-mvp`，与本项目的实际数据和启动命令分开管理。本轮没有修改这些参考实例。
 
 ## 三个核心场景
 
@@ -118,4 +119,4 @@ MVP 日志：`/tmp/accord-baotian-mvp.log`；Tutti 日志：`/tmp/accord-tutti-r
 2. 开会：Agent 先收集信息形成简报，人决定谁参会，结论确认后落地。
 3. 异步协作：共享成果与任务状态，Agent 建议分配，人确认责任人。
 
-完整规则与验收口径见项目背景；比赛时间已确认，准确演示时长、赛题规则与“等材料”的具体清单仍需核对。
+完整规则与验收口径见项目背景；比赛时间已确认，赛题规则与提交材料的具体清单仍需核对。

@@ -1,20 +1,26 @@
+import { scopeLabels } from './Materials';
+import { copyText } from '../../shared/browser';
 import { LocalizedDialogContent } from '../../shared/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Avatar, Badge, Button, Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Textarea } from '@tutti-os/ui-system';
 import { CheckIcon, FileTextIcon, LoadingIcon } from '@tutti-os/ui-system/icons';
-import type { Document, State, Thread } from '../../shared/api';
+import { api, reasoningLabels, timeLabel, type Document, type State, type Thread } from '../../shared/api';
+import { Markdown } from '../../shared/Markdown';
 
 export type Modal = { kind: 'handoff'; thread: Thread } | { kind: 'confirm'; thread: Thread } | { kind: 'document'; document: Document } | { kind: 'publish' } | { kind: 'settings' };
 
-export function Dialogs({ modal, close, state, busy, submit, theme, setTheme, login }: { modal: Modal | null; close: () => void; state: State; busy: boolean;
-  submit: (path: string, body: Record<string, unknown>) => Promise<boolean>; theme: string; setTheme: (t: string) => void; login: (id: string) => void;
+export function Dialogs({ modal, close, state, busy, submit, theme, setTheme, logout }: { modal: Modal | null; close: () => void; state: State; busy: boolean;
+  submit: (path: string, body: Record<string, unknown>) => Promise<boolean>; theme: string; setTheme: (t: string) => void; logout: () => void;
 }) {
+  const [displayed, setDisplayed] = useState(modal);
+  useEffect(() => { if (modal) setDisplayed(modal); }, [modal]);
+  const content = modal || displayed;
   return <Dialog open={!!modal} onOpenChange={open => { if (!open && !busy) close(); }}><LocalizedDialogContent className={modal?.kind === 'document' ? 'document-dialog' : 'action-dialog'}>
-    {modal && <DialogBody key={modal.kind} modal={modal} close={close} state={state} busy={busy} submit={submit} theme={theme} setTheme={setTheme} login={login} />}
+    {content && <DialogBody key={content.kind} modal={content} close={close} state={state} busy={busy} submit={submit} theme={theme} setTheme={setTheme} logout={logout} />}
   </LocalizedDialogContent></Dialog>;
 }
 
-function DialogBody({ modal, close, state, busy, submit, theme, setTheme, login }: Parameters<typeof Dialogs>[0] & { modal: Modal }) {
+function DialogBody({ modal, close, state, busy, submit, theme, setTheme, logout }: Parameters<typeof Dialogs>[0] & { modal: Modal }) {
   const [body, setBody] = useState('');
   const [title, setTitle] = useState(modal.kind === 'confirm' ? modal.thread.title : '');
   const [mode, setMode] = useState('now');
@@ -32,13 +38,34 @@ function DialogBody({ modal, close, state, busy, submit, theme, setTheme, login 
     if (await submit(path, values)) close();
     else setError('没有完成操作，请查看工作台提示并重试。输入已保留。');
   };
-  if (modal.kind === 'document') return <><DialogHeader><div className="document-dialog-icon"><FileTextIcon size={22} /></div><DialogTitle>{modal.document.title}</DialogTitle><DialogDescription>团队共享资料 · Agent 可引用</DialogDescription></DialogHeader><div className="document-body">{modal.document.body}</div><DialogFooter><Button variant="secondary" onClick={close}>关闭</Button></DialogFooter></>;
-  if (modal.kind === 'settings') return <><DialogHeader><DialogTitle>工作空间设置</DialogTitle><DialogDescription>当前为本地演示，成员、资料与初始请求均为合成数据。</DialogDescription></DialogHeader><div className="form-field"><label>外观</label><div className="theme-options">{[['dark','暗色'],['light','亮色']].map(([value,label]) => <Button key={value} variant={theme === value ? 'default' : 'secondary'} aria-pressed={theme === value} onClick={() => setTheme(value)}>{label}</Button>)}</div></div><div className="form-field"><label>切换演示成员</label><p>每个浏览器标签页可保留不同成员，用于核对双方视角。</p>{state.members.map(m => <Button key={m.id} variant="ghost" className="member-option" disabled={busy} onClick={() => login(m.id)}><Avatar label={m.person_name} initial={m.person_name[0]} size={26} /><span>{m.person_name}<small>{m.tags[0]}</small></span>{state.me === m.id && <CheckIcon />}</Button>)}</div><div className="settings-model"><Badge variant="secondary">{state.model.mode === 'model' ? '模型已配置' : '资料检索演示'}</Badge><p>未接模型时只返回已共享资料摘录。演示身份切换不用于生产账号认证。</p></div></>;
-  const labels = modal.kind === 'handoff' ? ['找本人处理', '提交后，对方可以看到这条协作的全部记录与引用资料。'] : modal.kind === 'confirm' ? ['确认结论并承担任务', '确认后，这条协作生成一条由你负责的任务，发起人也能看到。'] : ['发布到共享成果', '发布后，所有演示成员及其 Agent 都可以读取这份资料。'];
+  if (modal.kind === 'document') return <><DialogHeader><div className="document-dialog-icon"><FileTextIcon size={22} /></div><DialogTitle>{modal.document.title}</DialogTitle><DialogDescription>{scopeLabels[modal.document.scope] || '团队共享'} · v{modal.document.version || 1}</DialogDescription></DialogHeader><div className="document-body"><Markdown>{modal.document.body}</Markdown></div><DialogFooter><Button variant="secondary" onClick={close}>关闭</Button></DialogFooter></>;
+  if (modal.kind === 'settings') return <Settings state={state} theme={theme} setTheme={setTheme} busy={busy} submit={submit} logout={logout} />;
+  const labels = modal.kind === 'handoff' ? ['找本人处理', '提交后，对方可以看到这条协作的全部记录与引用资料。'] : modal.kind === 'confirm' ? ['确认结论并承担任务', '确认后，这条协作生成一条由你负责的任务，发起人也能看到。'] : ['发布到共享成果', '发布后，工作空间内所有成员及其 Agent 都可以读取这份资料。'];
   return <><DialogHeader><DialogTitle>{labels[0]}</DialogTitle><DialogDescription>{labels[1]}</DialogDescription></DialogHeader>
     {modal.kind === 'handoff' ? <><div className="theme-options"><Button variant={mode === 'now' ? 'default' : 'secondary'} aria-pressed={mode === 'now'} onClick={() => setMode('now')}>现在送达</Button><Button variant={mode === 'deadline' ? 'default' : 'secondary'} aria-pressed={mode === 'deadline'} onClick={() => setMode('deadline')}>指定时间</Button></div>{mode === 'deadline' && <div className="form-field"><label htmlFor="delivery">送达时间（本机时区）</label><Input id="delivery" type="datetime-local" value={deadline} onChange={e => setDeadline(e.target.value)} /></div>}</> : <div className="form-field"><label htmlFor="title">{modal.kind === 'confirm' ? '任务名称' : '资料标题'}</label><Input id="title" value={title} onChange={e => setTitle(e.target.value)} maxLength={160} /></div>}
     <div className="form-field"><label htmlFor="body">{modal.kind === 'handoff' ? '补充说明（可选）' : modal.kind === 'confirm' ? '你的结论' : '资料正文'}</label><Textarea id="body" value={body} onChange={e => setBody(e.target.value)} placeholder={modal.kind === 'confirm' ? '明确你确认的内容和下一步…' : '补充让对方能够直接理解的信息…'} maxLength={modal.kind === 'publish' ? 16000 : modal.kind === 'confirm' ? 4000 : 1000} /></div>
     {error && <p className="form-error" role="alert">{error}</p>}
     <DialogFooter><Button variant="ghost" onClick={close} disabled={busy}>取消</Button><Button disabled={busy || (modal.kind !== 'handoff' && (!body.trim() || !title.trim()))} aria-busy={busy} onClick={() => void save()}>{busy && <LoadingIcon />}{modal.kind === 'handoff' ? '确认找本人' : modal.kind === 'confirm' ? '确认并生成任务' : '确认发布'}</Button></DialogFooter>
+  </>;
+}
+
+
+function Settings({ state, theme, setTheme, busy, submit, logout }: Omit<Parameters<typeof Dialogs>[0], 'modal' | 'close'>) {
+  const me = state.members.find(member => member.id === state.me)!;
+  const [invite, setInvite] = useState<{code:string;expires_at:string} | null>(null);
+  const [creating, setCreating] = useState(false); const [error, setError] = useState(''); const [copied, setCopied] = useState(false);
+  const createInvite = async () => {
+    setCreating(true); setError(''); setCopied(false);
+    try { setInvite(await api('/auth/invite', {})); } catch (error) { setError((error as Error).message); } finally { setCreating(false); }
+  };
+  return <><DialogHeader><DialogTitle>工作空间设置</DialogTitle><DialogDescription>{state.project.name} · {state.account.role === 'owner' ? '创建者' : '成员'}</DialogDescription></DialogHeader>
+    <div className="settings-account"><Avatar label={me.person_name} initial={me.person_name[0]} size={32} /><div><strong>{me.person_name}</strong><span>{state.account.email}</span></div></div>
+    <div className="form-field"><label>外观</label><div className="theme-options">{[['dark','暗色'],['light','亮色']].map(([value,label])=><Button key={value} variant={theme===value ? 'default' : 'secondary'} aria-pressed={theme===value} onClick={()=>setTheme(value)}>{label}</Button>)}</div></div>
+    <div className="form-field"><label>你的协作状态</label><div className="theme-options">{[['open','可协作'],['closed','专注中']].map(([window,label])=><Button key={window} variant={me.window===window ? 'default' : 'secondary'} aria-pressed={me.window===window} disabled={busy} onClick={()=>void submit('/profile/availability',{window})}>{label}</Button>)}</div><p>状态会展示给成员；目前不会自动拦截找本人请求。</p></div>
+    <div className="settings-model"><Badge variant="secondary">{state.model.label}</Badge><p>今日已发起 {state.model.requests_today} / {state.model.daily_limit} 次生成，模型已回报 {state.model.reported_tokens_today.toLocaleString()} tokens。中断时未回传的用量不计入这里。</p></div>
+    {!!state.model.reasoning_options?.length && <div className="form-field"><label id="reasoning-label">你的思考强度</label><div className="theme-options" role="group" aria-labelledby="reasoning-label">{state.model.reasoning_options.map(effort => <Button key={effort} variant={state.model.reasoning_effort===effort ? 'default' : 'secondary'} aria-pressed={state.model.reasoning_effort===effort} disabled={busy} onClick={async () => { setError(''); if (!await submit('/profile/reasoning', { reasoning_effort: effort })) setError('思考强度未能保存，请重试。'); }}>{reasoningLabels[effort]}{effort==='max' ? '（默认）' : ''}</Button>)}</div><p>最高档适合复杂问题，等待时间和用量通常更多。仅影响你接下来发起或重试的回答，已在生成的回答保持原设置。</p></div>}
+    {state.account.role==='owner' && <div className="form-field"><label>邀请成员</label><p>邀请码 24 小时内有效，每个邀请码仅可加入一人。</p><Button variant="secondary" disabled={creating} onClick={()=>void createInvite()}>{creating && <LoadingIcon />}{invite ? '生成另一个邀请码' : '生成邀请码'}</Button>{invite && <><Input aria-label="新生成的邀请码" readOnly value={invite.code} /><Button variant="ghost" size="sm" onClick={()=>void copyText(invite.code).then(()=>setCopied(true)).catch(()=>setError('复制失败，请选择邀请码复制。'))}>{copied ? '已复制' : '复制邀请码'}</Button><p>{timeLabel(invite.expires_at)}（北京时间）到期。</p></>}</div>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <DialogFooter><Button variant="secondary" disabled={busy} onClick={logout}>退出登录</Button></DialogFooter>
   </>;
 }

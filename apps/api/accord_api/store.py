@@ -14,6 +14,7 @@ from xml.etree import ElementTree as ET
 
 ROOT = Path(os.environ.get("ACCORD_DATA_DIR", Path(__file__).resolve().parents[3] / ".local" / "workspace"))
 ROOT.mkdir(parents=True, exist_ok=True)
+ROOT.chmod(0o700)
 DATA = ROOT / "data"
 DATA.mkdir(exist_ok=True)
 POOL_DIR = ROOT / "工作池"
@@ -24,6 +25,7 @@ DB_PATH = DATA / "pool.db"
 
 _lock = threading.RLock()
 _conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+DB_PATH.chmod(0o600)
 _conn.row_factory = sqlite3.Row
 _conn.execute("PRAGMA journal_mode=WAL")
 _conn.execute("PRAGMA foreign_keys=ON")

@@ -1,25 +1,30 @@
-import { useState } from 'react';
-import { Button, Checkbox, Popover, PopoverContent, PopoverTrigger, Textarea } from '@tutti-os/ui-system';
-import { AddIcon, ArrowRightIcon, CheckIcon, FileTextIcon, LoadingIcon } from '@tutti-os/ui-system/icons';
-import type { Document } from '../../shared/api';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Button, Textarea } from '@tutti-os/ui-system';
+import { ArrowRightIcon, LoadingIcon } from '@tutti-os/ui-system/icons';
+import type { Document, ThreadContext, ResourceRef } from '../../shared/api';
+import { Materials } from './Materials';
 
-export function Composer({ documents, onSend, busy, human = false, disabled = false, initial = '', modelMode = 'retrieval' }: { documents: Document[]; onSend: (body: string, sourceIds: string[]) => Promise<boolean>; busy: boolean; human?: boolean; disabled?: boolean; initial?: string; modelMode?: string }) {
-  const [value, setValue] = useState(initial);
-  const [sources, setSources] = useState<string[]>([]);
-  const send = async () => { if (!value.trim() || busy || disabled) return; if (await onSend(value.trim(), sources)) { setValue(''); setSources([]); } };
-  return <div className="composer-wrap">
-    <div className="composer" aria-busy={busy}>
-      <Textarea aria-label={human ? '回复本人' : '输入协作请求'} placeholder={human ? '写下你的判断或补充信息…' : '说说你想推进什么，或引用一份共享资料…'} value={value} disabled={disabled || busy}
-        onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-      {sources.length > 0 && <div className="composer-sources">{sources.map(id => <span key={id}><FileTextIcon size={12} />{documents.find(d => d.id === id)?.title}</span>)}</div>}
-      <div className="composer-toolbar"><div className="inline-actions">
-        <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="引用共享资料" disabled={disabled || busy}><AddIcon /></Button></PopoverTrigger>
-          <PopoverContent align="start" className="source-picker"><strong>引用共享资料</strong><p>只引用已明确共享的成果。</p>
-            {documents.map(doc => <label className="source-option" key={doc.id}><Checkbox checked={sources.includes(doc.id)} onCheckedChange={checked => setSources(s => checked ? [...s, doc.id] : s.filter(id => id !== doc.id))} /><FileTextIcon size={14} /><span>{doc.title}</span></label>)}
-          </PopoverContent></Popover>
-        <span className="composer-mode">{human ? <CheckIcon size={13} /> : <span className="agent-dot" />}{human ? '本人会话' : modelMode === 'model' ? 'Agent · 已连接模型' : '共享资料检索'}</span>
-      </div><Button size="icon" aria-label="发送消息" disabled={!value.trim() || busy || disabled} onClick={() => void send()}>{busy ? <LoadingIcon /> : <ArrowRightIcon className="send-arrow" />}</Button></div>
-    </div>
-    <div className="composer-hint"><span>{human ? '消息会发送给这条协作的参与者' : 'Agent 先接住请求，需要时再找本人'}</span><span>Enter 发送 · Shift Enter 换行</span></div>
-  </div>;
+export function Composer({ folders, documents, onSend, busy, human=false, running, onStop, draftId, model, workspace, context, onBind, onFolder, onResource, pendingContext, initialValue='', allowEmpty=false, sendDisabled=false, sendLabel, inputLabel, placeholder, maxLength=8000, audience, contextLabel, accessory, error }: {
+  folders?: {id:string;name:string}[]; documents: Document[]; onSend: (body: string, sourceIds: string[]) => Promise<boolean>; busy: boolean; human?: boolean;
+  context?: ThreadContext; onBind?: (id: string, selected: boolean) => void; onFolder?: (id: string, selected?: boolean) => void; onResource: (resource: ResourceRef) => void; pendingContext?: boolean;
+  running?: boolean; onStop: () => void; draftId: string; model: string; workspace: string;
+  initialValue?: string; allowEmpty?: boolean; sendDisabled?: boolean; sendLabel?: string; inputLabel?: string; placeholder?: string;
+  maxLength?: number; audience?: string; contextLabel?: string; accessory?: ReactNode; error?: string;
+}) {
+  const [value,setValue] = useState(() => sessionStorage.getItem(draftId) ?? initialValue);
+  const [sources,setSources] = useState<string[]>(()=> { try { return JSON.parse(sessionStorage.getItem(draftId+'.sources') || '[]'); } catch { return []; } });
+  useEffect(()=> { sessionStorage.setItem(draftId+'.sources',JSON.stringify(sources)); },[sources,draftId]);
+  const materials=context?.resources || documents.filter(document=>sources.includes(document.id));
+  const toggle=(id:string,selected:boolean)=> { if (context && onBind) onBind(id,selected); else setSources(items=>selected ? [...new Set([...items,id])] : items.filter(item=>item!==id)); };
+  useEffect(() => { sessionStorage.setItem(draftId,value); },[draftId,value]);
+  const cannotSend = (!allowEmpty && !value.trim()) || value.length > maxLength || busy || !!running || sendDisabled;
+  const send = async () => { if (cannotSend) return; if (await onSend(value.trim(),context ? [] : sources)) { sessionStorage.removeItem(draftId); setValue(''); setSources([]); } };
+  return <div className="composer-wrap">{!human && <Materials availableFolders={folders} folders={context?.mounted_folders} resources={materials} available={context?.available || documents} busy={busy} pending={pendingContext} onToggle={toggle} onFolder={context ? onFolder : undefined} onOpen={onResource} />}<div className="composer" aria-busy={busy}>
+    {accessory}
+    <Textarea aria-label={inputLabel || (human ? '回复本人' : '输入协作请求')} placeholder={placeholder || (human ? '回复你的判断或补充信息…' : '输入问题或交代一件事…')} value={value} disabled={busy} maxLength={maxLength}
+      onChange={event=>setValue(event.target.value)} onKeyDown={event=> { if (event.key==='Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
+    {error && <p className="composer-error" role="alert">{error}</p>}
+    <div className="composer-toolbar"><span className="composer-audience">{audience || (human ? '本人会话' : workspace)}</span><div className="composer-right">{!human && <span className="composer-mode">{model}</span>}{running ? <Button size="icon" variant="secondary" aria-label="停止生成" onClick={onStop} disabled={busy}><span className="stop-glyph" /></Button> : <Button className={`send-button${sendLabel ? ' send-action' : ''}`} size={sendLabel ? 'sm' : 'icon'} aria-label={sendLabel || '发送消息'} disabled={cannotSend} onClick={()=>void send()}>{busy ? <LoadingIcon /> : sendLabel || <ArrowRightIcon className="send-arrow" />}</Button>}</div></div>
+    <div className="composer-context"><span>{contextLabel || (human ? '协作参与者可见' : workspace)}</span>{!contextLabel && <span>{human ? '回复会直接送达对方' : materials.length ? `${materials.length} 份可用资料` : '未附加资料'}</span>}</div>
+  </div><div className="composer-hint"><span>{running ? '回答正在生成，关闭页面后仍会继续' : '草稿暂存于当前浏览器标签页'}</span><span>Enter 发送 · Shift Enter 换行</span></div></div>;
 }

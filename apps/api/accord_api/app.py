@@ -1,5 +1,4 @@
 """Accord workspace API: real accounts, explicit permissions and persisted model runs."""
-import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -7,11 +6,15 @@ from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from urllib.parse import urlsplit
 from pydantic import BaseModel, Field
 
-from . import agent, auth, runtime, store
+from . import access, agent, auth, context, runtime, schema, store, workspace, topics, activity, chats
 from .auth import principal
+from . import model_settings
+from .access import thread_for
+from .commands import Operation, message as _message, operate, text
 
 app = FastAPI(title='Accord', docs_url=None, redoc_url=None, lifespan=runtime.lifespan)
 store.init()
@@ -36,21 +39,29 @@ def initialize():
         ''')
     auth.initialize()
     runtime.initialize()
+    model_settings.initialize()
+    schema.initialize()
+    activity.initialize()
     if store.query_one("SELECT 1 FROM project_state WHERE key='accord_seed_v1'"):
         raise RuntimeError('请为真实工作空间设置独立的 ACCORD_DATA_DIR，旧参考数据保留原位。')
 
 
-def _message(db, thread, kind, uid, body, sources=None, meta=None):
-    mid = store.new_id('msg')
-    db.execute('INSERT INTO messages(id,conversation_id,from_kind,from_unit,body,sources,meta,created_at) VALUES(?,?,?,?,?,?,?,?)',
-        (mid, thread, kind, uid, body, json.dumps(sources or []), json.dumps(meta or {}), store.now()))
-    return mid
 
 
 initialize()
 
 
 app.include_router(auth.router)
+app.include_router(workspace.router)
+app.include_router(model_settings.router)
+app.include_router(topics.router)
+app.include_router(activity.router)
+app.include_router(chats.router)
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request, error):
+    return JSONResponse({'detail': '输入内容不完整或超出长度限制，请检查表单。'}, status_code=422)
+
 
 
 @app.middleware('http')
@@ -70,13 +81,13 @@ async def same_origin(request: Request, call_next):
     return response
 
 
-class Operation(BaseModel):
-    operation_id: str = Field(min_length=8, max_length=100)
 
 
 class NewThread(Operation):
     target_id: str
     title: str = Field(default='新的协作', max_length=100)
+    folder_id: str = Field(default='', max_length=100)
+    source_ids: list[str] = Field(default_factory=list, max_length=20)
 
 
 class Message(Operation):
@@ -105,39 +116,10 @@ class SharedDocument(Operation):
     body: str = Field(min_length=1, max_length=16000)
 
 
-def text(value):
-    value = value.strip()
-    if not value:
-        raise HTTPException(422, '内容不能为空。')
-    return value
 
 
-def thread_for(uid, tid, db=None):
-    if db is None:
-        row = store.query_one('SELECT * FROM accord_threads WHERE id=?', (tid,))
-    else:
-        row = db.execute('SELECT * FROM accord_threads WHERE id=?', (tid,)).fetchone()
-    # A peer's Agent channel stays private to its initiator until explicitly handed off.
-    allowed = row and (row['owner_id'] == uid or (
-        row['target_id'] == uid and row['status'] in ('waiting','human','resolved')))
-    if not allowed:
-        raise HTTPException(404, '协作不存在或你没有查看权限。')
-    return dict(row)
 
 
-def operate(uid, body, action, fn):
-    fingerprint = hashlib.sha256((action + json.dumps(body.model_dump(), sort_keys=True)).encode()).hexdigest()
-    with store._lock, store._conn:
-        db = store._conn
-        old = db.execute('SELECT * FROM accord_operations WHERE actor=? AND operation_id=?', (uid, body.operation_id)).fetchone()
-        if old:
-            if old['fingerprint'] != fingerprint:
-                raise HTTPException(409, '请求标识已用于不同操作，请刷新后重试。')
-            return json.loads(old['result'])
-        result = fn(db)
-        db.execute('INSERT INTO accord_operations(actor,operation_id,fingerprint,status,result) VALUES(?,?,?,?,?)',
-            (uid,body.operation_id,fingerprint,'done',json.dumps(result)))
-        return result
 
 
 def public_units():
@@ -155,13 +137,18 @@ def health():
 
 @app.get('/api/state')
 def state(uid=Depends(principal)):
-    threads = [dict(r) for r in store.query('''SELECT * FROM accord_threads
-        WHERE owner_id=? OR (target_id=? AND status IN ('waiting','human','resolved')) ORDER BY updated_at DESC''', (uid,uid))]
-    tasks = [dict(r) for r in store.query('''SELECT t.*,a.creator_id,a.thread_id FROM tasks t JOIN accord_task_acl a ON a.task_id=t.id
-        WHERE a.creator_id=? OR t.assignee_id=? ORDER BY t.created_at DESC''', (uid,uid))]
-    return {'me':uid,'members':public_units(),'threads':threads,'tasks':tasks,'documents':documents(),
-        'model': {'mode':'model' if agent.configured() else 'unavailable','label':agent.model_name() if agent.configured() else '模型未连接', **runtime.usage_for(uid)},
-        'account':auth.account(uid),'project':{'name':auth.workspace_name()}}
+    with store._lock:
+        db=store._conn
+        threads=[]
+        for row in db.execute('SELECT id FROM accord_threads WHERE owner_id=? OR target_id=? ORDER BY updated_at DESC', (uid,uid)).fetchall():
+            try: threads.append(thread_for(uid,row['id'],db))
+            except HTTPException: pass
+        tasks = [dict(r) for r in db.execute('''SELECT t.*,a.creator_id,a.thread_id FROM tasks t JOIN accord_task_acl a ON a.task_id=t.id
+            WHERE a.creator_id=? OR t.assignee_id=? ORDER BY t.created_at DESC''', (uid,uid)) if any(t['id']==r['thread_id'] for t in threads)]
+        return {'me':uid,'members':[{**member,'activity':activity.visible(db,uid,member['id'])} for member in public_units()],'threads':threads,'tasks':[{**task,'priority':activity.task_priority(db,task['id'])} for task in tasks],'documents':context.available(db,uid),
+            'folders':workspace.folders(db,uid),'topics':topics.list_rounds(db,uid),
+            'model': {'mode':'model' if agent.configured() else 'unavailable','label':agent.model_name() if agent.configured() else '模型未连接', **runtime.usage_for(uid), **model_settings.public_settings(db, uid)},
+            'activity_preferences':activity.preferences(db,uid),'account':auth.account(uid),'project':{'name':auth.workspace_name()}}
 
 
 @app.post('/api/threads')
@@ -169,19 +156,40 @@ def new_thread(body: NewThread, uid=Depends(principal)):
     if not store.get_unit(body.target_id):
         raise HTTPException(404, '成员不存在。')
     def run(db):
+        if body.folder_id:
+            workspace.folder_for(db, uid, body.folder_id)
         tid = store.new_id('thread')
         now = store.now()
         db.execute('INSERT INTO accord_threads(id,owner_id,target_id,title,kind,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',
             (tid,uid,body.target_id,text(body.title),'workspace' if body.target_id==uid else 'peer',now,now))
+        if body.folder_id:
+            db.execute('INSERT INTO accord_placements VALUES(?,?,?,1)', (uid,tid,body.folder_id))
+        if body.source_ids:
+            current=thread_for(uid,tid,db)
+            for resource_id in body.source_ids:
+                resource=access.resource_for(db,uid,resource_id)
+                if not access.compatible(db,current,resource):
+                    raise HTTPException(403,'这份资料不适用于当前协作范围。')
+            context.put_binding(db,uid,'thread',tid,body.source_ids,[],1)
         return {'id':tid}
     return operate(uid,body,'create_thread',run)
 
 
 @app.get('/api/threads/{tid}')
-def thread(tid: str, uid=Depends(principal)):
-    row=thread_for(uid,tid)
-    messages=[store.row_msg(r) for r in store.query('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,rowid', (tid,))]
-    return {'thread':row,'messages':messages}
+def thread(tid: str, person_history: bool=False, uid=Depends(principal)):
+    with store._lock:
+        db=store._conn
+        row=thread_for(uid,tid,db)
+        segments=chats.pair_threads(db,uid,row['target_id'] if row['owner_id']==uid else row['owner_id']) if person_history and row['kind']=='peer' else [row]
+        messages=[]; tool_calls=[]
+        for segment in segments:
+            messages.extend(store.row_msg(r) for r in db.execute('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,rowid',(segment['id'],)))
+            tool_calls.extend(dict(r) for r in db.execute('SELECT c.*,r.assistant_message_id FROM accord_tool_calls c JOIN accord_runs r ON r.id=c.run_id WHERE r.thread_id=? ORDER BY c.created_at,c.rowid',(segment['id'],)))
+        inputs = {r['run_id']:json.loads(r['manifest']) for r in db.execute('''SELECT i.* FROM accord_run_inputs i JOIN accord_runs r ON r.id=i.run_id
+            WHERE r.thread_id=? AND r.status IN ('queued','running')''', (tid,))}
+        return {'thread':row,'messages':messages,'tool_calls':tool_calls,'segments':segments,
+            'context':{**context.effective(db,uid,row),'available':context.available(db,uid,row,False)},
+            'active_context': [{k:m[k] for k in ('resources','roots','binding_version','folder_id','folder_version') if k in m} for m in inputs.values()]}
 
 
 @app.post('/api/threads/{tid}/messages')
@@ -189,13 +197,20 @@ def send_message(tid: str, body: Message, uid=Depends(principal)):
     content = text(body.body)
     def run(db):
         current = thread_for(uid, tid, db)
-        if current['status'] in ('resolved', 'scheduled'):
-            raise HTTPException(409, '这条协作已确认或等待送达，请打开其他协作。')
-        shared_ids = {d['id'] for d in db.execute('SELECT id FROM artifacts')}
-        if not set(body.source_ids) <= shared_ids:
-            raise HTTPException(404, '引用资料不存在或不可共享。')
+        if current['status'] == 'scheduled':
+            raise HTTPException(409, '这条协作尚未送达，草稿可以保留，送达后继续发送。')
+        for resource_id in body.source_ids:
+            resource = access.resource_for(db, uid, resource_id)
+            if not access.compatible(db, current, resource):
+                raise HTTPException(404, '引用资料不存在或不可共享。')
         if runtime.active(db, tid):
             raise HTTPException(409, '回答仍在生成，可以先停止。')
+        if body.source_ids and current['status'] == 'agent':
+            current_binding = context.binding(db, uid, 'thread', tid)
+            context.put_binding(db, uid, 'thread', tid, current_binding['included'] + body.source_ids,
+                [rid for rid in current_binding['excluded'] if rid not in body.source_ids], current_binding['version']+1)
+        if uid == current['target_id'] and current['status'] == 'waiting':
+            _message(db, tid, 'system', uid, '本人开始回复，Agent 暂停代答。')
         mid = _message(db, tid, 'human', uid, content, body.source_ids)
         rid = None
         if current['status'] == 'agent':
@@ -233,7 +248,7 @@ def retry_run(rid: str, body: Operation, uid=Depends(principal)):
         latest = json.loads(message['meta']).get('run_id')
         if row['status'] not in ('error', 'cancelled') or thread['status'] != 'agent' or latest != rid:
             raise HTTPException(409, '这条回答当前不能重试。')
-        new_id = runtime.enqueue(db, row['thread_id'], uid, row['user_message_id'], row['assistant_message_id'], json.loads(row['source_ids']))
+        new_id = runtime.enqueue(db, row['thread_id'], uid, row['user_message_id'], row['assistant_message_id'], json.loads(row['source_ids']), previous_run_id=rid)
         return {'run_id': new_id}
     return operate(uid, body, 'retry:' + rid, run)
 
@@ -242,6 +257,8 @@ def retry_run(rid: str, body: Operation, uid=Depends(principal)):
 def handoff(tid: str, body: Handoff, uid=Depends(principal)):
     def run(db):
         row=thread_for(uid,tid,db)
+        if row['purpose'] != 'ordinary':
+            raise HTTPException(403, '请使用课题内的提交或交接操作。')
         if row['owner_id']!=uid or row['kind']!='peer':
             raise HTTPException(403,'只有发起人可以找对方本人。')
         if row['status']!='agent':
@@ -309,7 +326,7 @@ def publish(body: SharedDocument, uid=Depends(principal)):
     title=text(body.title)
     content=text(body.body)
     def run(db):
-        aid=store.new_id('doc')
+        aid=context.create_resource(db, uid, title, content, scope='team')
         db.execute('INSERT INTO artifacts(id,unit_id,title,body,created_at,kind,author) VALUES(?,?,?,?,?,?,?)',
             (aid,uid,title,content,store.now(),'note',uid))
         return {'id':aid}

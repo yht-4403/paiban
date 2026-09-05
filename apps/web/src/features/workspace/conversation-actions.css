@@ -1,0 +1,20 @@
+.conversation-input { flex-shrink: 0; }
+.conversation-next-action { width: min(100%, 860px); margin: 0 auto; padding: 0 32px 8px; }
+.conversation-next-action button { color: var(--text-secondary); }
+.conversation-action-fields { margin: 6px 12px 0; padding: 8px; border-bottom: 1px solid var(--line-1); }
+.conversation-action-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.conversation-action-heading strong { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; }
+.conversation-delivery { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.conversation-delivery input { width: auto; flex: 1; min-width: 180px; }
+.conversation-input .composer-audience { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; }
+.conversation-input .composer-error { margin: 0 16px 8px; color: var(--text-primary); font-size: 12px; }
+.conversation-input .send-action { width: auto; height: 32px; padding: 0 12px; border-radius: 6px; }
+.conversation-task { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: 0 0 20px 34px; border: 1px solid var(--line-1); border-radius: 8px; }
+.conversation-task > div { flex: 1; min-width: 0; }
+.conversation-task strong { display: block; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.conversation-task span { display: block; margin-top: 4px; font-size: 11px; color: var(--text-secondary); }
+@media (max-width: 760px) {
+  .conversation-next-action { padding: 0 16px 8px; }
+  .conversation-task { margin-left: 0; flex-wrap: wrap; }
+  .conversation-task > div { min-width: 140px; }
+}

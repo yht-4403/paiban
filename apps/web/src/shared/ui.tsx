@@ -2,7 +2,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { Button, DialogContent, DialogClose, Tooltip, TooltipContent, TooltipTrigger } from '@tutti-os/ui-system';
 import { CloseIcon, LoadingIcon } from '@tutti-os/ui-system/icons';
 
-export function IconButton({ label, children, onClick, active = false }: { label: string; children: ReactNode; onClick: () => void; active?: boolean }) {
+export function IconButton({ label, children, onClick, active }: { label: string; children: ReactNode; onClick: () => void; active?: boolean }) {
   return <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label={label} aria-pressed={active} onClick={onClick}>{children}</Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>;
 }
 

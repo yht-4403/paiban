@@ -1,82 +1,176 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Avatar, Badge, Button, TooltipProvider } from '@tutti-os/ui-system';
-import { AddIcon, ArrowRightIcon, CloseIcon, GridRightLinedIcon, LayoutMenuIcon, LoadingIcon, SettingsIcon, ViewGridLinedIcon } from '@tutti-os/ui-system/icons';
-import { api, command, type Document, type Member, type State, type Task, type ThreadData } from '../shared/api';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Button, TooltipProvider } from '@tutti-os/ui-system';
+import { AddIcon, CloseIcon, GridRightLinedIcon, LayoutMenuIcon, LoadingIcon, SettingsIcon } from '@tutti-os/ui-system/icons';
+import { api, ApiError, command, setAccountScope, type AuthStatus, type Document, type State, type Task, type ThreadData, type Thread, type Folder, type ResourceRef } from '../shared/api';
 import { IconButton, Pending } from '../shared/ui';
+import { usePresence } from '../features/chat/usePresence';
+import { ChatLobby } from '../features/chat/ChatList';
+import { AuthScreen } from '../features/auth/AuthScreen';
 import { Conversation } from '../features/workspace/Conversation';
-import { Sidebar, type View } from '../features/workspace/Sidebar';
+import { Sidebar } from '../features/workspace/Sidebar';
+import { route, viewTitles, type View } from '../shared/routes';
+import { FolderPage } from '../features/workspace/FolderPage';
+import { ResourceLibrary } from '../features/workspace/ResourceLibrary';
+import { TopicList } from '../features/topics/TopicList';
+import { TopicPage } from '../features/topics/TopicPage';
+import { proposalDraftKey } from '../features/topics/types';
 import { ContextPanel, Lists } from '../features/workspace/Panels';
 import { Dialogs, type Modal } from '../features/workspace/Dialogs';
-import { Gallery } from '../features/gallery/Gallery';
-
-const viewTitles = {workspace:'我的工作台',people:'找同事',inbox:'待我拍板',tasks:'我的待办',library:'共享成果',gallery:'组件样板'};
+const Gallery = lazy(() => import('../features/gallery/Gallery').then(module => ({ default: module.Gallery })));
 
 export function App() {
-  const [token,setToken] = useState(sessionStorage.getItem('accord.session'));
   const [state,setState] = useState<State | null>(null);
-  const [members,setMembers] = useState<Member[]>([]);
-  const [threadId,setThreadId] = useState<string | null>(sessionStorage.getItem('accord.thread'));
+  const [authStatus,setAuthStatus] = useState<AuthStatus | null>(null);
+  const [boot,setBoot] = useState(true);
+  const [threadId,setThreadId] = useState<string | null>(['workspace','chat'].includes(route().view) ? route().id : null);
+  const selected = useRef(threadId);
+  const accountId = useRef('');
+  const pendingThread = useRef<string | null>(null);
   const [data,setData] = useState<ThreadData | null>(null);
-  const [view,setView] = useState<View>(location.hash === '#gallery' ? 'gallery' : 'workspace');
-  const [busy,setBusy] = useState(false); const [loading,setLoading] = useState(false);
+  const [view,setView] = useState<View>(route().view);
+  const [routeId,setRouteId]=useState(route().id); const [section,setSection]=useState(route().section);
+  const [undoMove,setUndoMove]=useState<{threadId:string;folderId:string;version:number;label:string} | null>(null);
+  const [busy,setBusy] = useState(false); const busyRef = useRef(false);
+  const [loading,setLoading] = useState(false);
   const [error,setError] = useState(''); const [modal,setModal] = useState<Modal | null>(null);
   const [theme,setTheme] = useState(localStorage.getItem('accord.theme') || 'dark');
-  const [sidebar,setSidebar] = useState(false); const [context,setContext] = useState(true);
-  const [query,setQuery] = useState('');
+  const [mobileNav,setMobileNav] = useState(false);
+  const [nav,setNav] = useState(localStorage.getItem('accord.nav') !== 'closed');
+  const [context,setContext] = useState(localStorage.getItem('accord.context') === 'open');
+  const [query,setQuery] = useState(''); const [draftKey,setDraftKey] = useState(0);
   useEffect(() => { document.documentElement.dataset.theme=theme; localStorage.setItem('accord.theme',theme); },[theme]);
-  useEffect(() => { api<{enabled:boolean;members:Member[]}>('/demo').then(d => { setMembers(d.members); if (!d.enabled) setError('演示入口未启用，请按 README 启动本地服务。'); }).catch(e => setError(e.message)); },[]);
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    const next = await api<State>('/state',undefined,signal); if (!signal?.aborted) setState(next);
-    if (threadId) { const result = await api<ThreadData>(`/threads/${threadId}`,undefined,signal); if (!signal?.aborted) setData(result); }
-  },[threadId]);
+  useEffect(() => { localStorage.setItem('accord.context',context ? 'open' : 'closed'); },[context]);
+  useEffect(() => { localStorage.setItem('accord.nav',nav ? 'open' : 'closed'); },[nav]);
+  const syncRoute = useCallback(() => { const next=route(); selected.current=['workspace','chat'].includes(next.view) ? next.id : null; setThreadId(selected.current); setRouteId(next.id); setSection(next.section); setView(next.view); setMobileNav(false); },[]);
+  useEffect(() => { window.addEventListener('hashchange',syncRoute); return () => window.removeEventListener('hashchange',syncRoute); },[syncRoute]);
+  const navigate = (next: View, id: string | null = null, section='') => { location.hash = next + (id ? '/' + encodeURIComponent(id) : '') + (section ? '/'+section : ''); syncRoute(); };
+  const selectThread = (id: string) => {
+    const known=state?.threads.find(thread=>thread.id===id);
+    if (known) navigate(known.kind==='peer' ? 'chat' : 'workspace',id);
+    else void api<ThreadData>(`/threads/${id}`).then(result=>navigate(result.thread.kind==='peer' ? 'chat' : 'workspace',id)).catch(error=>setError(error.message));
+  };
+  const newWorkspace = useCallback(() => {
+    if (accountId.current) { sessionStorage.removeItem(`accord.draft.${accountId.current}.new`); sessionStorage.removeItem(`accord.draft.${accountId.current}.new.sources`); }
+    pendingThread.current=null; selected.current=null; setThreadId(null); setData(null); setRouteId(null); setSection(''); setView('workspace'); location.hash='workspace'; setMobileNav(false);
+    setDraftKey(k=>k+1);
+  },[]);
+  const clearSession = useCallback(() => { setState(null); setData(null); setModal(null); selected.current=null; setThreadId(null); setUndoMove(null); setAccountScope(''); },[]);
   useEffect(() => {
-    if (!token) return;
-    const controller = new AbortController(); setLoading(!!threadId); setData(null);
-    void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError(e.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    const timer = setInterval(() => { if (!document.hidden) void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError('连接暂时中断：'+e.message); }); },3000);
+    const expired = () => { clearSession(); void api<AuthStatus>('/auth/status').then(setAuthStatus); };
+    window.addEventListener('accord:auth-expired',expired); return () => window.removeEventListener('accord:auth-expired',expired);
+  },[clearSession]);
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    const next = await api<State>('/state',undefined,signal);
+    if (signal?.aborted) return;
+    accountId.current=next.me; setAccountScope(next.me); setState(next);
+    const id = selected.current;
+    if (id) {
+      try { const result = await api<ThreadData>(`/threads/${id}?person_history=true`,undefined,signal); if (!signal?.aborted && selected.current===id) setData(result); }
+      catch (error) { if (error instanceof ApiError && error.status===404) newWorkspace(); throw error; }
+    }
+  },[newWorkspace]);
+  const load = useCallback(async () => {
+    setError('');
+    try { setAuthStatus(await api<AuthStatus>('/auth/status')); await refresh(); }
+    catch (error) { if (!(error instanceof ApiError && error.status===401)) setError((error as Error).message); }
+    finally { setBoot(false); }
+  },[refresh]);
+  useEffect(() => { sessionStorage.removeItem('accord.session'); sessionStorage.removeItem('accord.thread'); void load(); },[load]);
+  const signedIn = !!state;
+  usePresence(state,threadId,view==='chat');
+  useEffect(() => {
+    if (!signedIn) return;
+    const controller = new AbortController(); let polling=false;
+    setData(null); setLoading(!!threadId);
+    const update = async () => {
+      if (polling) return; polling=true;
+      try { await refresh(controller.signal); }
+      catch (error) { if (!controller.signal.aborted && !(error instanceof ApiError && error.status===401)) setError((error as Error).message); }
+      finally { polling=false; if (!controller.signal.aborted) setLoading(false); }
+    };
+    void update();
+    const timer = setInterval(() => { if (!document.hidden) void update(); },1000);
     return () => { controller.abort(); clearInterval(timer); };
-  },[token,refresh,threadId]);
-  const navigate = (next: View) => { setView(next); location.hash = next === 'gallery' ? 'gallery' : ''; setSidebar(false); };
-  const selectThread = (id: string) => { setThreadId(id); sessionStorage.setItem('accord.thread',id); navigate('workspace'); };
-  const newWorkspace = useCallback(() => { setThreadId(null); sessionStorage.removeItem('accord.thread'); setData(null); setView('workspace'); location.hash = ''; setSidebar(false); },[]);
-  useEffect(() => { const handler = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); newWorkspace(); } }; window.addEventListener('keydown',handler); return () => window.removeEventListener('keydown',handler); },[newWorkspace]);
-  const login = async (id: string) => {
-    setBusy(true); setError('');
-    try { const result = await api<{token:string}>('/demo/login',{unit_id:id}); sessionStorage.setItem('accord.session',result.token); sessionStorage.removeItem('accord.thread'); setThreadId(null); setData(null); setState(null); setToken(result.token); setModal(null); setView('workspace'); location.hash = ''; }
-    catch(e) { setError((e as Error).message); } finally { setBusy(false); }
-  };
+  },[signedIn,refresh,threadId]);
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase()==='k') { event.preventDefault(); newWorkspace(); }
+      if (event.key==='Escape') setMobileNav(false);
+    };
+    window.addEventListener('keydown',handler); return () => window.removeEventListener('keydown',handler);
+  },[newWorkspace]);
   const perform = async (path: string, body: Record<string,unknown>) => {
-    if (busy) return false;
-    setBusy(true); setError('');
-    try { await command(path,body); await refresh(); return true; } catch(e) { setError((e as Error).message); return false; } finally { setBusy(false); }
+    if (busyRef.current) return false;
+    busyRef.current=true; setBusy(true); setError('');
+    try {
+      await command(path,body);
+      try { await refresh(); } catch { setError('操作已保存，页面同步暂时中断，请重新连接。'); }
+      return true;
+    }
+    catch (error) { setError((error as Error).message); return false; }
+    finally { busyRef.current=false; setBusy(false); }
   };
-  const openMember = async (id: string) => {
-    if (busy) return; setBusy(true); setError('');
-    try { const result = await command<{id:string}>('/threads',{target_id:id}); selectThread(result.id); }
-    catch(e) { setError((e as Error).message); } finally { setBusy(false); }
+  const openMember = async (id: string, folderId='', sourceIds:string[]=[], newItem=false) => {
+    if (busyRef.current) return; busyRef.current=true; setBusy(true); setError('');
+    try { const peer=id!==state?.me; const result = await command<{id:string}>(peer ? '/chats/open' : '/threads',peer ? {target_id:id,new_item:newItem} : {target_id:id,folder_id:folderId,source_ids:sourceIds}); navigate(peer ? 'chat' : 'workspace',result.id); }
+    catch (error) { setError((error as Error).message); } finally { busyRef.current=false; setBusy(false); }
   };
   const send = async (body: string, sourceIds: string[]) => {
-    if (!state || busy) return false;
-    setBusy(true); setError('');
+    if (!state || busyRef.current) return false;
+    busyRef.current=true; setBusy(true); setError('');
     try {
-      let id = threadId;
-      if (!id) { const result = await command<{id:string}>('/threads',{target_id:state.me}); id=result.id; }
+      let id = selected.current || pendingThread.current;
+      if (!id) { const result=await command<{id:string}>('/threads',{target_id:state.me}); id=result.id; pendingThread.current=id; }
       await command(`/threads/${id}/messages`,{body,source_ids:sourceIds});
-      if (threadId !== id) selectThread(id); else await refresh();
+      pendingThread.current=null; if (selected.current!==id) selectThread(id);
+      try { await refresh(); } catch { setError('消息已保存，页面同步暂时中断，请重新连接。'); }
       return true;
-    } catch(e) { setError((e as Error).message); return false; } finally { setBusy(false); }
+    } catch (error) { setError((error as Error).message); return false; } finally { busyRef.current=false; setBusy(false); }
+  };
+  const logout = async () => {
+    try { await api('/auth/logout',{}); clearSession(); newWorkspace(); setAuthStatus(await api<AuthStatus>('/auth/status')); setError(''); }
+    catch (error) { setError((error as Error).message); }
   };
   const doc = (document: Document) => setModal({kind:'document',document});
-  const task = (item: Task) => { void perform(`/tasks/${item.id}/status`,{status:item.status === 'done' ? 'open' : 'done'}); };
+  const openResource=(resource:ResourceRef)=> { void api<Document>(`/resources/${resource.id}${resource.version ? '?version='+resource.version : ''}`).then(doc).catch(error=>setError(error.message)); };
+  const moveThread=async(thread:Thread,folderId:string)=> {
+    if (await perform(`/threads/${thread.id}/move`,{folder_id:folderId,expected_version:thread.placement_version})) setUndoMove({threadId:thread.id,folderId:thread.folder_id,version:thread.placement_version+1,label:state?.folders.find(folder=>folder.id===folderId)?.name || '未分类'});
+  };
+  const folderMaterial=(folder:Folder,resourceId:string,selected=true)=> {
+    const included=selected ? [...new Set([...folder.binding.included,resourceId])] : folder.binding.included.filter(id=>id!==resourceId);
+    void perform(`/folders/${folder.id}/bindings`,{included,excluded:[],expected_version:folder.binding.version});
+  };
+  const bindMaterial=(resourceId:string,enabled:boolean)=> {
+    if (!data || (enabled && data.context.resources.some(resource=>resource.id===resourceId))) return;
+    const current=data.context.binding;
+    const included=enabled ? [...new Set([...current.included,resourceId])] : current.included.filter(id=>id!==resourceId);
+    const excluded=enabled ? current.excluded.filter(id=>id!==resourceId) : [...new Set([...current.excluded,resourceId])];
+    void perform(`/threads/${data.thread.id}/bindings`,{included,excluded,expected_version:current.version});
+  };
+  const bindFolder=(folderId:string,enabled=true)=> {
+    if (!data) { setError('请先新建聊天，再加入文件夹资料。'); return; }
+    const current=data.context.binding;
+    const folder_ids=enabled ? [...new Set([...(current.folder_ids || []),folderId])] : (current.folder_ids || []).filter(id=>id!==folderId);
+    void perform(`/threads/${data.thread.id}/bindings`,{included:current.included,excluded:current.excluded,folder_ids,expected_version:current.version});
+  };
+  const submitDraft=(roundId:string,body:string)=> { if (!state) return; sessionStorage.setItem(proposalDraftKey(state.me,roundId),JSON.stringify({title:'',body,sources:[]})); navigate('topics',roundId,'submit'); };
+  const folder=state?.folders.find(folder=>folder.id===routeId);
+
+  const task = (item: Task) => { void perform(`/tasks/${item.id}/status`,{status:item.status==='done' ? 'open' : 'done'}); };
+  const toggleNav = () => { if (window.matchMedia('(max-width:760px)').matches) setMobileNav(v=>!v); else setNav(v=>!v); };
   return <TooltipProvider delayDuration={300}>
-    {!token ? <main className="login-screen"><div className="login-card"><span className="wordmark">accord<span>·</span></span><h1>让协作先行。</h1><p>Agent 接住日常问题，重要的事由你拍板。</p><div className="login-members">{members.map(m => <button key={m.id} disabled={busy} onClick={() => void login(m.id)}><Avatar label={m.person_name} initial={m.person_name[0]} size={36} /><span><strong>{m.person_name}</strong><small>{m.tags[0]}</small></span><ArrowRightIcon size={16} /></button>)}</div>{error && <p role="alert" className="form-error">{error}<Button variant="ghost" size="sm" onClick={() => location.reload()}>重新连接</Button></p>}<small className="login-note">选择一个演示成员进入 · 使用合成资料 · 仅本机运行</small></div></main> : !state ? <main className="boot-screen"><Pending />{error && <div role="alert"><p>{error}</p><Button variant="secondary" onClick={() => { sessionStorage.removeItem('accord.session'); setToken(null); }}>重新进入</Button></div>}</main> : <div className="app-shell">
-      <div className="app-rail"><button className="brand-mark" aria-label="Accord 工作台" onClick={newWorkspace}>a</button><IconButton label="工作空间" active onClick={() => navigate('workspace')}><ViewGridLinedIcon /></IconButton><div className="rail-spacer" /><IconButton label="工作空间设置" onClick={() => setModal({kind:'settings'})}><SettingsIcon /></IconButton><Avatar label={state.members.find(m=>m.id===state.me)!.person_name} initial={state.members.find(m=>m.id===state.me)!.person_name[0]} size={25} /></div>
-      <Sidebar state={state} view={view} setView={v => v === 'workspace' ? newWorkspace() : navigate(v)} selected={threadId} selectThread={selectThread} newThread={newWorkspace} query={query} setQuery={setQuery} settings={() => setModal({kind:'settings'})} open={sidebar} close={() => setSidebar(false)} />
-      <div className="workbench"><header className="workbench-header"><div className="breadcrumb"><span className="mobile-menu"><IconButton label="打开导航" onClick={() => setSidebar(!sidebar)}><LayoutMenuIcon /></IconButton></span><span>AlxOrigin</span><span className="breadcrumb-slash">/</span><strong>{view === 'workspace' && data ? data.thread.title : viewTitles[view]}</strong></div><div className="header-actions"><Badge variant="ghost" className="local-badge">本地演示</Badge><IconButton label="新建协作" onClick={newWorkspace}><AddIcon /></IconButton><span className="context-toggle"><IconButton label="切换项目上下文" active={context} onClick={() => setContext(!context)}><GridRightLinedIcon /></IconButton></span><IconButton label="外观与成员" onClick={() => setModal({kind:'settings'})}><SettingsIcon /></IconButton></div></header>
-        {error && <div className="error-banner" role="alert"><span>{error}</span><Button variant="ghost" size="sm" onClick={() => { void refresh().then(()=>setError('')).catch(e=>setError(e.message)); }}>重试</Button><Button variant="ghost" size="icon-xs" aria-label="关闭提示" onClick={() => setError('')}><CloseIcon /></Button></div>}
-        <div className="workspace-body"><main className="main-surface" id="main-content">{view === 'gallery' ? <Gallery /> : view === 'workspace' ? <Conversation state={state} data={data} loading={loading} busy={busy} onSend={send} onHandoff={() => data && setModal({kind:'handoff',thread:data.thread})} onConfirm={() => data && setModal({kind:'confirm',thread:data.thread})} onDocument={doc} onNew={newWorkspace} prompt="" /> : <Lists view={view} state={state} busy={busy} onMember={id=>void openMember(id)} onThread={selectThread} onDocument={doc} onPublish={() => setModal({kind:'publish'})} onTask={task} />}</main>{context && view !== 'gallery' && <ContextPanel state={state} onDocument={doc} onThread={selectThread} />}</div>
-        <footer className="workbench-footer"><span><span className="status-dot" />{state.model.label}</span><span>{busy && <LoadingIcon size={12} />}{busy ? '正在处理' : error ? '请处理上方提示' : '协作记录自动保存'}</span></footer>
-      </div><Dialogs modal={modal} close={() => setModal(null)} state={state} busy={busy} submit={perform} theme={theme} setTheme={setTheme} login={id=>void login(id)} />
-    </div>}
+    {boot ? <main className="boot-screen"><Pending /></main> : !state ? authStatus ? <AuthScreen status={authStatus} onLogin={async () => { newWorkspace(); await load(); }} /> : <main className="boot-screen"><div role="alert"><p>{error || '暂时无法连接工作空间'}</p><Button onClick={() => void load()}>重新连接</Button></div></main> : <div className="app-shell"><div className="workbench">
+      <header className="workbench-header"><div className="breadcrumb"><IconButton label="切换导航" onClick={toggleNav} active={window.matchMedia('(max-width:760px)').matches ? mobileNav : nav}><LayoutMenuIcon /></IconButton><span className="workspace-name">{state.project.name}</span><span className="breadcrumb-slash">/</span><strong>{view==='chat' && data ? state.members.find(member=>member.id===(data.thread.owner_id===state.me ? data.thread.target_id : data.thread.owner_id))?.person_name || '聊天' : view==='workspace' && data ? data.thread.title : view==='folder' && folder ? folder.name : view==='topics' && routeId ? state.topics.find(topic=>topic.id===routeId)?.title || '课题' : viewTitles[view]}</strong></div>
+        <div className="header-actions"><IconButton label="新建协作" onClick={newWorkspace}><AddIcon /></IconButton><span className="context-toggle"><IconButton label="切换协作上下文" active={context} onClick={() => setContext(!context)}><GridRightLinedIcon /></IconButton></span><IconButton label="工作空间设置" onClick={() => setModal({kind:'settings'})}><SettingsIcon /></IconButton></div>
+      </header>
+      {error && <div className="error-banner" role="alert"><span>{error}</span><Button variant="ghost" size="sm" onClick={() => { void refresh().then(()=>setError('')).catch(error=>setError(error.message)); }}>重新连接</Button><Button variant="ghost" size="icon-xs" aria-label="关闭提示" onClick={() => setError('')}><CloseIcon /></Button></div>}
+      <div className="workspace-body">
+        <Sidebar state={state} view={view} setView={v=>v==='workspace' ? newWorkspace() : navigate(v)} selected={threadId} selectThread={selectThread} newThread={newWorkspace} query={query} setQuery={setQuery} settings={() => setModal({kind:'settings'})} open={mobileNav} collapsed={!nav} close={() => setMobileNav(false)} busy={busy} onAction={perform} onMove={(thread,folderId)=>void moveThread(thread,folderId)} onFolder={id=>navigate('folder',id)} onFolderMaterial={folderMaterial} onMember={id=>void openMember(id)} />
+        <main className="main-surface" id="main-content" inert={mobileNav}>{view==='gallery' && import.meta.env.DEV ? <Suspense fallback={<Pending />}><Gallery /></Suspense> : view==='chat' && !threadId ? <ChatLobby state={state} onMember={id=>void openMember(id)} onInvite={()=>setModal({kind:'settings'})} /> : ['workspace','chat'].includes(view) ? <Conversation state={state} data={data} loading={loading} busy={busy} onSend={send} onHandoff={() => data && setModal({kind:'handoff',thread:data.thread})} onConfirm={() => data && setModal({kind:'confirm',thread:data.thread})} onDocument={doc} onNew={newWorkspace} draftKey={draftKey} onRun={(id,action)=>void perform(`/runs/${id}/${action}`,{})} onResource={openResource} onBind={bindMaterial} onFolder={bindFolder} onRefresh={refresh} onOpen={selectThread} onTopic={id=>navigate('topics',id)} onSubmission={submitDraft} onNewChatItem={id=>void openMember(id,'',[],true)} /> : view==='folder' ? <FolderPage folder={folder} state={state} busy={busy} onNew={()=>void openMember(state.me,routeId || '')} onThread={selectThread} onBind={(id,enabled)=>folder && folderMaterial(folder,id,enabled)} onResource={openResource} /> : view==='library' ? <ResourceLibrary state={state} onRefresh={refresh} onResource={openResource} onUse={id=>void openMember(state.me,'',[id])} /> : view==='topics' ? routeId ? <TopicPage key={state.me+routeId} id={routeId} section={section} state={state} onBack={()=>navigate('topics')} onThread={selectThread} onRefresh={refresh} onResource={openResource} /> : <TopicList state={state} onTopic={id=>navigate('topics',id)} onRefresh={refresh} /> : <Lists view={view} state={state} busy={busy} onMember={id=>void openMember(id)} onThread={selectThread} onDocument={doc} onPublish={() => setModal({kind:'publish'})} onSettings={()=>setModal({kind:'settings'})} onTask={task} />}</main>
+        {context && ['workspace','chat'].includes(view) && <ContextPanel state={state} data={data} onDocument={openResource} onThread={selectThread} />}
+      </div>
+      {undoMove && <div className="operation-toast" role="status"><span>已移动到 {undoMove.label}</span><Button variant="ghost" size="xs" disabled={busy} onClick={()=>void perform(`/threads/${undoMove.threadId}/move`,{folder_id:undoMove.folderId,expected_version:undoMove.version}).then(ok=>ok && setUndoMove(null))}>撤销</Button><Button variant="ghost" size="icon-xs" aria-label="关闭移动提示" onClick={()=>setUndoMove(null)}><CloseIcon /></Button></div>}
+      <footer className="workbench-footer"><span>{state.model.label}</span><span>{busy && <LoadingIcon size={12} />}{busy ? '正在保存' : error ? '连接需要恢复' : '已连接工作空间'}</span></footer>
+    </div><Dialogs modal={modal} close={() => setModal(null)} state={state} busy={busy} submit={perform} theme={theme} setTheme={setTheme} logout={()=>void logout()} /></div>}
   </TooltipProvider>;
 }

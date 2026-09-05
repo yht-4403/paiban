@@ -1,44 +1,69 @@
-import { useEffect, useRef } from 'react';
+import { copyText } from '../../shared/browser';
+import { useEffect, useRef, useState } from 'react';
 import { Avatar, Badge, Button } from '@tutti-os/ui-system';
-import { CheckIcon, FileTextIcon, MessageSquareTextIcon, UserLinedIcon } from '@tutti-os/ui-system/icons';
-import { statusLabels, timeLabel, type State, type ThreadData, type Document } from '../../shared/api';
+import { CheckIcon, FileTextIcon, LoadingIcon, MessageSquareTextIcon, UserLinedIcon } from '@tutti-os/ui-system/icons';
+import { reasoningLabels, statusLabels, timeLabel, type State, type ThreadData, type Document, type ResourceRef } from '../../shared/api';
 import { Pending } from '../../shared/ui';
-import { Composer } from './Composer';
+import { Markdown } from '../../shared/Markdown';
+import { ConversationInput, ConversationTask, type ConversationAction } from './ConversationInput';
+import { useMutation } from '../../shared/useMutation';
+import { InlineCollaboration } from './InlineCollaboration';
+import { acceptsDrag, receiveDrop } from '../../shared/drag';
 
-export function Conversation({ state, data, loading, busy, onSend, onHandoff, onConfirm, onDocument, onNew, prompt }: {
+export function Conversation({ state, data, loading, busy, onSend, onHandoff, onConfirm, onDocument, onNew, draftKey, onRun, onResource, onBind, onFolder, onRefresh, onOpen, onTopic, onSubmission }: {
   state: State; data: ThreadData | null; loading: boolean; busy: boolean; onSend: (body: string, sourceIds: string[]) => Promise<boolean>;
-  onHandoff: () => void; onConfirm: () => void; onDocument: (doc: Document) => void; onNew: () => void; prompt: string;
+  onHandoff: () => void; onConfirm: () => void; onDocument: (doc: Document) => void; onNew: () => void; draftKey: number;
+  onRun: (id: string, action: 'stop' | 'retry') => void;
+  onResource: (resource:ResourceRef)=>void; onBind:(id:string,selected:boolean)=>void; onFolder:(id:string,selected?:boolean)=>void; onRefresh:()=>Promise<void>; onOpen:(id:string)=>void; onTopic:(id:string)=>void; onSubmission:(roundId:string,body:string)=>void;
 }) {
-  const tail = useRef<HTMLDivElement>(null);
-  useEffect(() => { tail.current?.scrollIntoView({ block: 'nearest' }); }, [data?.messages.length]);
+  const [action,setAction]=useState<{kind:'handoff'|'confirm'|'share';target?:string} | null>(null);
+  const [dropHover,setDropHover]=useState(false);
+  const actionMutation=useMutation(onRefresh);
+  const performAction: ConversationAction=async(path,body)=> (await actionMutation.mutate(path,body)) !== undefined;
+  useEffect(()=>setAction(null),[data?.thread.id]);
+  const scroll = useRef<HTMLDivElement>(null); const pinned = useRef(true);
+  const [unread,setUnread] = useState(false); const [copied,setCopied] = useState('');
+  const revision = data?.messages.map(m=>m.id+m.body.length+m.meta.status).join();
+  const bottom = () => { if (scroll.current) scroll.current.scrollTop=scroll.current.scrollHeight; pinned.current=true; setUnread(false); };
+  useEffect(() => { if (pinned.current) bottom(); else setUnread(true); },[revision,loading]);
+  useEffect(() => { pinned.current=true; bottom(); },[data?.thread.id]);
   if (loading) return <Pending label="正在打开协作" />;
   const thread = data?.thread;
-  const peer = state.members.find(m => m.id === thread?.target_id);
-  const human = thread && ['waiting', 'human'].includes(thread.status);
-  const displayMember = thread?.target_id === state.me && (human || thread.status === 'resolved') ? state.members.find(m => m.id === thread.owner_id) : peer;
+  const canSubmit=thread?.purpose==='exploration' && state.topics.some(topic=>topic.id===thread.round_id && topic.stage==='exploring');
+  const peer = state.members.find(m=>m.id===thread?.target_id);
+  const human = !!thread && ['waiting','human','resolved'].includes(thread.status);
+  const displayMember = thread?.target_id===state.me && (human || thread.status==='resolved') ? state.members.find(m=>m.id===thread.owner_id) : peer;
   const isEmpty = !data?.messages.length;
+  const active = data?.messages.find(m=>['queued','running'].includes(m.meta.status || ''));
+  const composerId = `accord.draft.${state.me}.${thread?.id || 'new'}`;
+  const modelLabel = state.model.label + (state.model.reasoning_options?.length ? ` · ${reasoningLabels[state.model.reasoning_effort]}思考` : '');
+  const composer = <ConversationInput key={composerId+draftKey} thread={thread} messages={data?.messages || []} state={state} onAction={performAction} composer={{draftId: composerId, documents: state.documents, folders: state.folders, context: data?.context, onBind: onBind, onFolder: onFolder, onResource: onResource, pendingContext: !!data?.active_context.some(snapshot=>snapshot.binding_version!==data.context.binding.version || snapshot.folder_id!==data.context.folder_id || snapshot.folder_version!==data.context.folder_version || JSON.stringify((snapshot.roots || snapshot.resources).map(r=>[r.id,r.version]))!==JSON.stringify(data.context.resources.map(r=>[r.id,r.version]))), onSend: async (body,sources)=> { pinned.current=true; return onSend(body,sources); }, busy: busy || actionMutation.busy, human: human, model: modelLabel, workspace: state.project.name, running: !!active, onStop: ()=>active?.meta.run_id && onRun(active.meta.run_id,'stop')}} />;
   return <div className={`conversation ${isEmpty ? 'conversation-empty' : ''}`}>
-    {thread && <div className="conversation-heading"><div><Avatar label={displayMember?.person_name || '我的 Agent'} initial={displayMember?.person_name[0]} size={28} /><div><strong>{thread.kind === 'workspace' ? '我的 Agent' : human || thread.status === 'resolved' ? displayMember?.person_name : peer?.agent_name}</strong><span>{thread.kind === 'workspace' ? '这段工作记录仅你可见' : statusLabels[thread.status]}</span></div></div>
-      {thread.kind === 'peer' && thread.owner_id === state.me && thread.status === 'agent' && <Button variant="secondary" onClick={onHandoff} disabled={!data.messages.length || busy}><UserLinedIcon />找本人</Button>}
-      {thread.target_id === state.me && human && <Button onClick={onConfirm} disabled={busy}><CheckIcon />确认并生成任务</Button>}
+    {thread && <div className="conversation-heading"><div><Avatar label={displayMember?.person_name || '我的 Agent'} initial={thread.kind==='workspace' ? 'A' : displayMember?.person_name[0]} size={24} /><div><strong>{thread.kind==='workspace' ? '我的 Agent' : displayMember?.person_name}</strong><span>{thread.kind==='workspace' ? '仅你可见' : thread.status==='agent' ? `${peer?.person_name}的 Agent 代答` : statusLabels[thread.status]}</span></div></div>
     </div>}
-    {!!thread?.handoff_note && <div className="handoff-note"><strong>转交说明</strong>{thread.handoff_note}</div>}
-    {isEmpty ? <div className="workspace-welcome"><div className="welcome-mark"><MessageSquareTextIcon size={26} /></div><p className="eyeline">一起把事情往前推</p><h1>{thread?.kind === 'peer' ? `先问问${peer?.person_name}的 Agent` : '今天，有什么需要一起推进？'}</h1><p className="welcome-description">查一份资料，问一位同事，或把一个想法变成行动。</p>
-      <Composer modelMode={state.model.mode} key={prompt} initial={prompt} documents={state.documents} onSend={onSend} busy={busy} />
-      <div className="welcome-shortcuts">{['梳理当前演示范围', '查找工作台 UI 资料', '整理联调检查清单'].map(text => <Button key={text} variant="outline" size="sm" disabled={busy} onClick={() => void onSend(text, [])}>{text}<ArrowSmall /></Button>)}</div>
-    </div> : <><div className="messages" role="log" aria-label="协作消息">{data.messages.map(message => {
-      const member = state.members.find(m => m.id === message.from_unit);
-      if (message.from_kind === 'system') return <div className="system-message" key={message.id}><CheckIcon size={12} />{message.body}</div>;
-      return <article className={`message message-${message.from_kind}`} key={message.id}>
-        <Avatar label={message.from_kind === 'agent' ? `${member?.person_name}的 Agent` : member?.person_name || '成员'} initial={message.from_kind === 'agent' ? 'A' : member?.person_name[0]} size={27} />
-        <div className="message-content"><div className="message-byline"><strong>{message.from_kind === 'agent' ? `${member?.person_name}的 Agent` : message.from_unit === state.me ? '你' : member?.person_name}</strong>{message.from_kind === 'agent' && <Badge variant={message.meta.mode === 'error' ? 'destructive' : 'secondary'} size="sm">{message.meta.mode === 'model' ? '模型回答' : message.meta.mode === 'error' ? '调用失败' : '资料检索'}</Badge>}<time>{timeLabel(message.created_at)}</time></div>
-          <div className="message-body">{message.body}</div>
-          {!!message.sources.length && <div className="citations">{message.sources.map(id => { const doc = state.documents.find(d => d.id === id); return doc && <Button key={id} variant="outline" size="xs" onClick={() => onDocument(doc)}><FileTextIcon />{doc.title}</Button>; })}</div>}
-        </div></article>;
-    })}<div ref={tail} /></div>
-      {thread?.status === 'resolved' ? <div className="resolved-bar"><CheckIcon size={15} /><span>这条协作已确认，任务已进入双方待办。</span><Button variant="secondary" size="sm" onClick={onNew}>新建协作</Button></div> : thread?.status === 'scheduled' ? <div className="resolved-bar"><span>将于 {timeLabel(thread.delivery_at)}（北京时间）送达本人。</span></div> : <Composer modelMode={state.model.mode} documents={state.documents} onSend={onSend} busy={busy} human={!!human} />}
+    {thread?.round_id && <div className="topic-chat-band"><button onClick={()=>onTopic(thread.round_id)}>{state.topics.find(topic=>topic.id===thread.round_id)?.title || '课题'}</button><span>{thread.purpose==='exploration' ? '独立探索 · 仅自己' : thread.purpose==='review' ? '我的方案比较' : '决策交接'}</span>{canSubmit && <Button size="xs" variant="ghost" disabled={busy || !!active || !data?.messages.length} onClick={()=>void onSend('请根据共同简报和本段探索，整理一份可提交的方案，包含主张、证据、限制和下一步。保留未验证事项，不提交或公开。',[])}>整理方案</Button>}</div>}
+    {thread?.kind==='workspace' && thread.purpose==='ordinary' && <div className={`participants-target ${dropHover ? 'drop-active' : ''}`} aria-label="参与者区域" onDragOver={event=> { if (acceptsDrag(event,['thread','member'])) { event.preventDefault(); setDropHover(true); } }} onDragLeave={()=>setDropHover(false)} onDrop={event=> { const item=receiveDrop(event,['thread','member']); setDropHover(false); if (item?.kind==='member' && item.id!==state.me && state.members.some(m=>m.id===item.id)) setAction({kind:'share',target:item.id}); else if (item?.kind==='thread' && item.id===thread.id) setAction({kind:'share'}); }}><span>仅自己可见</span><Button size="xs" variant="ghost" disabled={busy || !data?.messages.length} onClick={()=>setAction({kind:'share'})}><UserLinedIcon />交给同事</Button></div>}
+    {action && data && <InlineCollaboration key={action.kind+(action.target || '')} kind={action.kind} initialTarget={action.target} state={state} data={data} close={()=>setAction(null)} onRefresh={onRefresh} onOpen={onOpen} />}
+    {isEmpty ? <div className="workspace-welcome"><div className="welcome-mark"><MessageSquareTextIcon size={25} /></div><h1>{thread?.kind==='peer' ? `与${peer?.person_name}的 Agent 协作` : '有什么需要一起推进？'}</h1><p className="welcome-description">{thread?.kind==='peer' ? '先查共享资料，需要本人判断时再转交。' : '从一个问题、一份资料或一件待办开始。'}</p>{composer}</div> : <>
+      <div className="messages" ref={scroll} role="log" aria-label="协作消息" aria-live="off" onScroll={()=> { const box=scroll.current; if (box) { pinned.current=box.scrollHeight-box.scrollTop-box.clientHeight<100; if (pinned.current) setUnread(false); } }}>{data.messages.map(message=> {
+        const member=state.members.find(m=>m.id===message.from_unit);
+        if (message.from_kind==='system') return <div key={message.id}><div className="system-message"><CheckIcon size={12} />{message.body}</div>{thread?.handoff_note && (message.body==='已请本人处理。' || message.body==='已安排在指定时间送达本人。') && <div className="handoff-note"><strong>转交说明</strong>{thread.handoff_note}</div>}</div>;
+        const generating=['queued','running'].includes(message.meta.status || '');
+        const failed=['error','cancelled'].includes(message.meta.status || '');
+        return <article className={`message message-${message.from_kind}`} key={message.id}>
+          <Avatar label={message.from_kind==='agent' ? 'Agent' : member?.person_name || '成员'} initial={message.from_kind==='agent' ? 'A' : member?.person_name[0]} size={24} />
+          <div className="message-content"><div className="message-byline"><strong>{message.from_kind==='agent' ? thread?.kind==='workspace' ? 'Accord' : `${member?.person_name}的 Agent` : message.from_unit===state.me ? '你' : member?.person_name}</strong>{message.meta.model && <span className="message-model">{message.meta.model}</span>}<time>{timeLabel(message.created_at)}</time></div>
+            {!!message.body && (message.from_kind==='agent' ? <Markdown>{message.body}</Markdown> : <div className="message-body">{message.body}</div>)}
+            {generating && <div className="generation-status" role="status"><LoadingIcon size={13} />{message.meta.status==='queued' ? '等待生成' : message.meta.phase==='thinking' ? `正在思考${message.meta.reasoning_effort ? ` · ${reasoningLabels[message.meta.reasoning_effort]}` : ''}` : message.meta.phase==='reading' ? '正在查阅资料' : message.meta.phase==='connecting' ? '正在连接模型' : '正在生成'}</div>}
+            {failed && <div className="generation-error" role="status"><span>{message.meta.error || '回答没有完成'}</span>{thread?.status==='agent' && message.meta.run_id && <Button variant="secondary" size="xs" disabled={busy || !!active} onClick={()=>onRun(message.meta.run_id!,'retry')}>重新生成</Button>}</div>}
+            {message.meta.finish_reason==='length' && <p className="subtle-message">回答已到本次长度上限，可以继续提问。</p>}
+            {!!data.tool_calls.filter(call=>call.run_id===message.meta.run_id).length && <details className="tool-trace"><summary>资料查阅 · {data.tool_calls.filter(call=>call.run_id===message.meta.run_id).length} 步</summary>{data.tool_calls.filter(call=>call.run_id===message.meta.run_id).map(call=><div key={call.id}><FileTextIcon size={12} /><span>{call.name==='context_read' ? '查阅资料' : call.name==='context_search' ? '检索资料' : '查看目录'}{call.resource_id && state.documents.find(d=>d.id===call.resource_id) ? ` · ${state.documents.find(d=>d.id===call.resource_id)?.title}` : ''}</span><small>{call.status==='done' ? '完成' : '未读取'}</small></div>)}</details>}
+            {!!message.sources.length && <div className="citations">{message.sources.map(id=> { const ref=message.meta.citations?.find(item=>item.id===id) || state.documents.find(d=>d.id===id); return ref && <Button key={id} variant="outline" size="xs" onClick={()=>onResource(ref)}><FileTextIcon />{ref.title || '引用资料'} · v{ref.version}</Button>; })}</div>}
+            {!!message.body && !generating && <div className="message-actions">{canSubmit && thread && message.from_kind==='agent' && message.meta.status==='done' && <Button variant="ghost" size="xs" onClick={()=>onSubmission(thread.round_id,message.body)}>作为提交稿</Button>}<Button variant="ghost" size="xs" onClick={()=> { void copyText(message.body).then(()=>setCopied(message.id)).catch(()=>setCopied('error')); }}>{copied===message.id ? '已复制' : '复制'}</Button>{copied==='error' && <span>复制失败，请选择正文复制</span>}{message.meta.usage?.total_tokens !== undefined && <span>{message.meta.usage.total_tokens.toLocaleString()} tokens · {((message.meta.duration_ms || 0)/1000).toFixed(1)} 秒</span>}{message.meta.status==='cancelled' && <Badge size="sm" variant="ghost">已停止</Badge>}</div>}
+          </div></article>;
+      })}{state.tasks.filter(task=>task.thread_id===thread?.id).map(task=><ConversationTask key={task.id} task={task} state={state} busy={busy || actionMutation.busy} onAction={performAction} />)}{actionMutation.error && <p role="alert" className="form-error">{actionMutation.error}</p>}</div>
+      {unread && <div className="jump-latest"><Button size="sm" variant="secondary" onClick={bottom}>查看最新消息 ↓</Button></div>}
+      {composer}
     </>}
   </div>;
 }
-
-function ArrowSmall() { return <span aria-hidden="true">↗</span>; }
