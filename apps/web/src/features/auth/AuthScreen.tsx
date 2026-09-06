@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Avatar, Button } from '@tutti-os/ui-system';
 import { ArrowRightIcon, LoadingIcon } from '@tutti-os/ui-system/icons';
 import { api, setSessionToken, type AuthAccounts, type AuthSelection, type AuthStatus, type FixedAccount, type FixedAccountKind } from '../../shared/api';
+import { BrandMark } from '../../shared/BrandMark';
 
 const accountGroups: { kind: FixedAccountKind; label: string }[] = [
   { kind: 'demo', label: '演示成员' },
@@ -48,7 +49,10 @@ export function AuthScreen({ status, onLogin }: { status: AuthStatus; onLogin: (
 
   return <main className="login-screen identity-login-screen">
     <section className="login-card identity-picker" aria-labelledby="auth-title">
-      <span className="wordmark">accord<span>·</span></span>
+      <div className="auth-brand" aria-label="拍办">
+        <BrandMark className="auth-brand-mark" />
+        <span className="auth-wordmark">拍办</span>
+      </div>
       <div className="identity-heading">
         <h1 id="auth-title">选择身份</h1>
         <p>{workspace}</p>

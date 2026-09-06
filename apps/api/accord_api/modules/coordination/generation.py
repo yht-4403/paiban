@@ -269,6 +269,8 @@ def execute(fid):
         instruction = (
             '整理已经结束的真实对话。仅将明确的下一步列为待办建议，不替人承诺或确认；没有行动项则 actions=[]。区分本人结论和 Agent 建议。'
             if closing
+            else '这是创新探索分配。根据证据推荐 1–3 位适合从不同方向独立探索的人，理由对应其经验和当前状态；不要替他们预先生成方向或成果。证据不足时 candidates=[]，说明缺什么，不编造适合的人。actions=[]。'
+            if f['kind'] == 'assignment' and f['task_type'] == 'exploration'
             else '根据证据推荐 1–3 位最适合完成任务的人，理由对应其经验和当前状态。证据不足时 candidates=[]，说明缺什么，不编造适合的人。actions=[]。'
             if f['kind'] == 'assignment'
             else '这是同步会：汇总已知进展、差异和未知项；如果仍需向具体成员核实，candidates 推荐最多 3 位最相关成员并说明要找他的原因，否则为空；actions=[]。不能宣称真人参加会议或已做出决策。'

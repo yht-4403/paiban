@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5186 --strictPort",
+    "test:context": "node --experimental-strip-types --test src/features/workspace/contextTasks.test.mjs",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
     "@tutti-os/ui-system": "0.0.427",
-    "driver.js": "1.8.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "10.1.0",

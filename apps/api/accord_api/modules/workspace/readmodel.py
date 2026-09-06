@@ -79,7 +79,12 @@ def state(*, uid):
             ],
             'threads': [t for t in threads if t['id'] not in archived],
             'tasks': [
-                {**task, 'priority': activity.task_priority(db, task['id'])} for task in tasks
+                topics.task_projection(
+                    db,
+                    uid,
+                    {**task, 'priority': activity.task_priority(db, task['id'])},
+                )
+                for task in tasks
             ],
             'documents': context.available(db, uid),
             'folders': workspace.folders(db, uid),

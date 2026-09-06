@@ -22,6 +22,10 @@ class Submission(VersionedOperation):
     source_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
+class Direction(VersionedOperation):
+    label: str = Field(min_length=1, max_length=100)
+
+
 class Decision(VersionedOperation):
     body: str = Field(min_length=1, max_length=4000)
     proposal_ids: list[str] = Field(min_length=1, max_length=30)

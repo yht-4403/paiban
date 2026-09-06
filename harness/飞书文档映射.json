@@ -176,21 +176,21 @@
       "url": "https://my.feishu.cn/docx/MW5udBqv0o4KqaxLY4VcF2Jhnld",
       "folder_token": "IOOUftTINlA8k3d9zOycVJQcnXe",
       "status": "verified",
-      "revision_id": 39,
+      "revision_id": 40,
       "write_warnings": [],
-      "source_sha256": "1340a2ebfa8a2eb6fad8bb37939638250d6ef48aafc1c9a12b05c48fe94b5267",
-      "published_sha256": "ff10f2cd917c57eeaf4b62615f0ae3531601b6ef48a71650244b4baca89dc843",
-      "remote_content_sha256": "ff10f2cd917c57eeaf4b62615f0ae3531601b6ef48a71650244b4baca89dc843",
-      "verified_at": "2026-09-06T06:01:18+08:00",
-      "verified_heading_count": 39,
-      "verified_crosslink_count": 49,
+      "source_sha256": "2443b7e903826e82cf09f4297036c0882ebd7625cc9135ac19376bfdf9f64a47",
+      "published_sha256": "4f476efdcda5c901d81c795aec68ced947c679fbc40de5bba42590177d449daf",
+      "remote_content_sha256": "4f476efdcda5c901d81c795aec68ced947c679fbc40de5bba42590177d449daf",
+      "verified_at": "2026-09-06T06:26:08+08:00",
+      "verified_heading_count": 40,
+      "verified_crosslink_count": 50,
       "last_verified_section": {
         "heading": "2026-09-05 临时团队预览准备",
         "remote_sha256": "16dba4442317f2a146521131236c0429f5be85b50946160390cedefc356b7001",
         "verified_at": "2026-09-05T15:19:31.477243+08:00"
       },
-      "last_verified_patch": "追加会议任务闭环与教学演练同步记录",
-      "verified_scope": "文末新增本轮四文档同步、真实验收和隐私边界记录，保留既有台账"
+      "last_verified_patch": "追加输入框附件与模型选择同步记录",
+      "verified_scope": "文末新增本轮功能、验证和隐私边界记录，保留既有台账"
     },
     "docs/竞品调研/2026-09-05-001-图蒂参考项目-调研记录.md": {
       "title": "2026-09-05-001-图蒂参考项目-调研记录",
@@ -213,16 +213,16 @@
       "url": "https://my.feishu.cn/docx/BxjYdCXjdo4WxzxdzvOctMt4ngc",
       "folder_token": "JASqfAcOPlQh2LdTrkJcaM7fnmd",
       "status": "verified",
-      "revision_id": 44,
+      "revision_id": 45,
       "write_warnings": [],
-      "source_sha256": "3fa781bbaaaa737fca41c19d2fcb64768ca2db26192d48b29eba1f5e8d46e97d",
-      "published_sha256": "0e52e18b69d8803ca190be45ee20cf2e826c22d94a84f478a10f1056fb1a8475",
-      "remote_content_sha256": "0e52e18b69d8803ca190be45ee20cf2e826c22d94a84f478a10f1056fb1a8475",
-      "verified_at": "2026-09-06T06:01:18+08:00",
+      "source_sha256": "53d84ee23f20e62ca2a870866b0ceaa30189d91842966a5a471c64107fb4b3da",
+      "published_sha256": "50e2238a635da239a505566fb5c824b43799c9125840fc09cf92b34d4dbe2b07",
+      "remote_content_sha256": "50e2238a635da239a505566fb5c824b43799c9125840fc09cf92b34d4dbe2b07",
+      "verified_at": "2026-09-06T06:26:08+08:00",
       "verified_heading_count": 7,
       "verified_crosslink_count": 38,
-      "last_verified_patch": "新增 017 并将 016 更新为七步教学",
-      "verified_scope": "产品规划目录原位新增 017 入口并更新 016 摘要，保留其余目录项"
+      "last_verified_patch": "更新 017 输入框能力摘要",
+      "verified_scope": "产品规划目录原位更新 017 摘要，保留其他目录项"
     },
     "docs/竞品调研/2026-09-05-002-图蒂界面体系与复用方案-调研记录.md": {
       "title": "2026-09-05-002-图蒂界面体系与复用方案-调研记录",
@@ -815,27 +815,27 @@
       "url": "https://my.feishu.cn/docx/HvEWdgUIQoInCzxQJuecMJTcnzh",
       "folder_token": "Jn1ZfK8XhlRibFdibiicwKmEnzb",
       "status": "verified",
-      "source_sha256": "c7ec8e9f64b6f2407466a3c948ca71fee3b773e636d18d02405d2ff929eb291f",
-      "published_sha256": "42ee5805fa8468443216e27224fdd6dd959c3a0ddc881806fe82303f9d5a35d9",
-      "remote_content_sha256": "1122e25ca91f9a889747adec43b283c8d1497a2b666ebde4f204b79a9a6ba9b2",
-      "revision_id": 3,
+      "source_sha256": "2bab5a87d056711e45e182406b2226d14da47a234bbd132406026ed08b90f33b",
+      "published_sha256": "75808b93cae687fff91dd5392dbbad1fdd0154d810aca0e618a37e17debafdb7",
+      "remote_content_sha256": "75808b93cae687fff91dd5392dbbad1fdd0154d810aca0e618a37e17debafdb7",
+      "revision_id": 8,
       "write_warnings": [],
-      "verified_at": "2026-09-06T06:01:18+08:00",
-      "verified_heading_count": 13,
+      "verified_at": "2026-09-06T06:26:08+08:00",
+      "verified_heading_count": 12,
       "verified_crosslink_count": 0,
-      "last_verified_patch": "新建七项飞书反馈实现与验收记录",
-      "verified_scope": "记录同步会推荐、真人决策会、附件、右键动作、转交摘要、真人通道关闭、任务回执与下一次同步"
+      "last_verified_patch": "输入框附件预览与模型选择验收",
+      "verified_scope": "更新附件限制、预览与拖入、服务端模型白名单、思考强度滑杆、99 项测试和视觉模型边界"
     }
   },
-  "last_batch_verified_at": "2026-09-06T06:01:18+08:00",
-  "last_batch_document_count": 4,
+  "last_batch_verified_at": "2026-09-06T06:26:08+08:00",
+  "last_batch_document_count": 3,
   "folder_membership_verified": true,
   "last_delivery_scope": {
-    "topic": "会议任务闭环与教学演练",
-    "new_document_count": 1,
+    "topic": "输入框附件与模型选择",
+    "new_document_count": 0,
     "updated_document_count": 3,
     "index_updated": true,
     "sync_log_updated": true,
-    "verified_at": "2026-09-06T06:01:18+08:00"
+    "verified_at": "2026-09-06T06:26:08+08:00"
   }
 }

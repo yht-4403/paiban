@@ -1,4 +1,4 @@
-# Accord · 拍办 Paiban
+# 拍办
 
 **你拍板，AI 办事。**
 
@@ -68,7 +68,7 @@
 
 AlxOrigin Team，分工摘自路演第 9 页。
 
-![团队分工：堡天负责产品与商业化，建成负责架构与工程，舒奥负责产品体验，盛弘负责融资与资本规划](docs/参赛材料/图片/05-PPT团队分工.png)
+![团队分工：堡天负责产品与商业化，建成负责架构与工程，书傲负责产品体验，盛弘负责融资与资本规划](docs/参赛材料/图片/05-PPT团队分工.png)
 
 <details>
 <summary>本地启动与更多资料</summary>
@@ -97,7 +97,7 @@ chmod 600 .env
 npm run dev
 ```
 
-打开 <http://127.0.0.1:5186>，从六个固定身份中选择一个即可进入。建成、堡天、舒奥属于演示协作范围，另外三个身份属于独立的体验协作范围；两组成员、资料、会话、会议和待办不会互相混入。每个浏览器标签页保持自己的身份，数据保存在 `.local/workspace`。macOS 也可用 `python3 tools/dev-services.py start` 托管服务，用 `python3 tools/preview-services.py start --lan` 开放局域网访问。
+打开 <http://127.0.0.1:5186>，从六个固定身份中选择一个即可进入。建成、堡天、书傲属于演示协作范围，另外三个身份属于独立的体验协作范围；两组成员、资料、会话、会议和待办不会互相混入。每个浏览器标签页保持自己的身份，数据保存在 `.local/workspace`。macOS 也可用 `python3 tools/dev-services.py start` 托管服务，用 `python3 tools/preview-services.py start --lan` 开放局域网访问。
 
 本地 Codex 可以把用户明确选中的文本成果放进团队工作池。首次选择固定身份后会在本机保存七天会话，不使用或保存密码：
 
@@ -113,6 +113,6 @@ CLI 只处理命令中指定的文件，不会自动公开私人聊天或扫描�
 - [CP1 详细进展记录](https://github.com/yht-4403/paiban/blob/a79cf3efcb072be819dadd4a907dca2cecf4d651/README.md)
 - [团队 PRD](https://my.feishu.cn/docx/OauGdFaZRoh0ENxtpCfcGxRfnD1) · [用户体验流程](https://my.feishu.cn/docx/D6iLdPtQYoZ8d3xuIjscNcMInGT)（需飞书权限）
 
-工程名为 Accord，路演名为拍办 / Paiban。两张方案与团队图片均由仓库内的路演原稿导出。
+产品名统一为拍办；代码目录和兼容性命名仍保留 `accord`。两张方案与团队图片均由仓库内的路演原稿导出。
 
 </details>

@@ -92,6 +92,8 @@ def tick(body, uid, task_id):
         ).fetchone()
         if not task:
             raise DomainError(404, '待办不存在或需要负责人操作。')
+        if db.execute('SELECT 1 FROM accord_task_topics WHERE task_id=?', (task_id,)).fetchone():
+            raise DomainError(409, '创新探索任务请在课题中封存方案，不能按普通待办整理完成。')
         old = db.execute(
             "SELECT * FROM accord_flows WHERE kind='task_summary' AND task_id=? ORDER BY created_at DESC LIMIT 1",
             (task_id,),

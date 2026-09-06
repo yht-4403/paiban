@@ -4,6 +4,8 @@
   top: 52px;
   right: 16px;
   width: min(326px, calc(100vw - 32px));
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
   padding: 16px;
   border: 1px solid var(--line-1);
   border-radius: 12px;
@@ -11,10 +13,10 @@
   box-shadow: var(--shadow-lg);
   color: var(--text-primary);
 }
-.driver-active .tutorial-panel,
-.driver-active .tutorial-panel *,
-.driver-active .tutorial-pointer { pointer-events: auto; }
-.tutorial-panel-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-secondary); font-size: 11px; }
+.tutorial-panel button:not(:disabled) { cursor: pointer; }
+.tutorial-panel button:disabled { cursor: default; }
+.tutorial-panel-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-secondary); font-size: 11px; cursor: grab; touch-action: none; user-select: none; }
+.tutorial-panel[data-dragging="true"] .tutorial-panel-meta { cursor: grabbing; }
 .tutorial-panel-meta > button { border: 0; padding: 2px 0; background: transparent; color: var(--text-secondary); font-size: 11px; }
 .tutorial-panel-meta > button:hover { color: var(--text-primary); }
 .tutorial-panel > strong { display: block; margin-top: 14px; font-size: 15px; font-weight: 600; line-height: 1.5; }
@@ -35,18 +37,15 @@
   pointer-events: none;
   animation: tutorial-pointer-press 660ms ease-in-out both;
 }
-.tutorial-action-cue { box-shadow: 0 0 0 4px var(--line-focus-window) !important; }
 @keyframes tutorial-pointer-press {
   0% { opacity: 0; transform: translate(14px, 12px) rotate(-18deg) scale(.88); }
   32% { opacity: 1; transform: translate(0, 0) rotate(-18deg) scale(1); }
   72% { opacity: 1; transform: translate(-2px, 3px) rotate(-18deg) scale(.94); }
   100% { opacity: 0; transform: translate(-2px, 3px) rotate(-18deg) scale(.94); }
 }
-.accord-tutorial-driver-popover { display: none !important; }
 @media (max-width: 760px) {
   .tutorial-panel { top: auto; right: 12px; bottom: 36px; width: calc(100vw - 24px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .tutorial-pointer { animation: none; opacity: 1; }
-  .tutorial-action-cue { box-shadow: 0 0 0 3px var(--line-focus-window) !important; }
 }

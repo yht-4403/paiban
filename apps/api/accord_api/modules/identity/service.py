@@ -28,8 +28,8 @@ FIXED_ACCOUNTS = (
     },
     {
         'id': 'fixed_demo_shuao',
-        'name': '舒奥',
-        'agent_name': '舒奥的 Agent',
+        'name': '书傲',
+        'agent_name': '书傲的 Agent',
         'kind': 'demo',
         'role': 'member',
     },
@@ -82,7 +82,7 @@ def authenticate(token: str):
 
 def workspace_name():
     row = store.query_one("SELECT value FROM project_state WHERE key='workspace_name'")
-    return row['value'] if row else 'Accord'
+    return row['value'] if row else '拍办'
 
 
 def account(uid):

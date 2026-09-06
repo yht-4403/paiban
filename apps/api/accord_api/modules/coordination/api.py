@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from accord_api.modules.coordination import service, task_completion
 from accord_api.modules.coordination.schemas import Choose, FollowUp, Sharing, Start
 from accord_api.modules.identity.session import principal
+from accord_api.modules.topics import service as topics
 from accord_api.platform.commands import Operation
 
 router = APIRouter()
@@ -66,6 +67,11 @@ def share(body: Sharing, uid=Depends(principal)):
 @router.post('/api/tasks/{task_id}/tick')
 def tick_task(task_id: str, body: task_completion.Tick, uid=Depends(principal)):
     return task_completion.tick(body, uid, task_id)
+
+
+@router.get('/api/tasks/{task_id}/exploration')
+def exploration_task(task_id: str, uid=Depends(principal)):
+    return topics.exploration_task(task_id=task_id, uid=uid)
 
 
 @router.post('/api/task-summaries/{fid}/reply')

@@ -89,7 +89,7 @@ class FixedAccountTests(unittest.TestCase):
         )
         self.assertEqual(
             [account['name'] for account in accounts],
-            ['建成', '堡天', '舒奥', '体验者一', '体验者二', '体验者三'],
+            ['建成', '堡天', '书傲', '体验者一', '体验者二', '体验者三'],
         )
         self.assertEqual([account['kind'] for account in accounts], ['demo'] * 3 + ['trial'] * 3)
         self.assertTrue(all('email' not in account for account in accounts))

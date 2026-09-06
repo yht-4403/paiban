@@ -6,6 +6,7 @@ import { AddIcon, ChevronDownIcon, FileTextIcon, FolderIcon, MessageSquareTextIc
 import type { Folder, State, Thread } from '../../shared/api';
 import type { View } from '../../shared/routes';
 import { acceptsDrag, dragEnd, dragStart, receiveDrop } from '../../shared/drag';
+import { BrandMark } from '../../shared/BrandMark';
 export type { View } from '../../shared/routes';
 
 export function Sidebar({ state, view, setView, selected, selectThread, newThread, query, setQuery, settings, open, collapsed, close, onFolder, onMove, onArchive, onCreateGroup, onFolderMaterial, onAction, busy, onMember }: {
@@ -32,7 +33,7 @@ export function Sidebar({ state, view, setView, selected, selectThread, newThrea
   };
   return <><button className={`sidebar-shade ${open ? 'visible' : ''}`} onClick={close} aria-label="关闭导航" tabIndex={open ? 0 : -1} />
     <aside className={`sidebar ${open ? 'sidebar-open' : ''} ${collapsed ? 'sidebar-collapsed' : ''}`} aria-label="工作区导航">
-      <div className="sidebar-brand"><span className="sidebar-wordmark">accord</span><span>{state.project.name}</span></div>
+      <div className="sidebar-brand"><div className="sidebar-brand-lockup" aria-label="拍办"><BrandMark /><strong className="sidebar-product-name">拍办</strong></div><span>{state.project.name}</span></div>
       <div className="sidebar-search"><SearchIcon size={14} /><Input aria-label={collaboration?'搜索聊天或同事':'搜索工作台'} placeholder="搜索" value={query} onChange={event=>setQuery(event.target.value)} />{collaboration&&<GroupPicker members={state.members.filter(member=>member.id!==state.me)} onChoose={onCreateGroup} />}</div>
       <div className="workspace-mode" aria-label="选择个人空间或协作"><button className={!collaboration ? 'active' : ''} onClick={()=>setView('workspace')}>工作台</button><button className={collaboration ? 'active' : ''} onClick={()=>setView('chat')}>找同事{inbox>0 && <span>{inbox}</span>}</button></div>
       <nav className="primary-nav" aria-label="协作入口"><Button variant="ghost" className={`nav-row ${view==='meetings'?'selected':''}`} onClick={()=>setView('meetings')}><MessageSquareTextIcon/><span>开会</span></Button><Button variant="ghost" className={`nav-row ${view==='assignments'?'selected':''}`} onClick={()=>setView('assignments')}><UserLinedIcon/><span>分配任务</span></Button></nav>

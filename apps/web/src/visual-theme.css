@@ -1,4 +1,4 @@
-/* Accord visual layer: trustworthy product surfaces with rare color sparks. */
+/* Paiban visual layer: trustworthy product surfaces with rare color sparks. */
 
 :root[data-theme="light"] {
   --renderer-accent: oklch(0.55 0.21 268);
@@ -190,13 +190,8 @@ body {
   padding: 0 8px 20px;
 }
 
-.sidebar-wordmark {
-  color: var(--text-primary);
-}
-
-.sidebar-wordmark::after {
-  content: "·";
-  color: var(--primary);
+.sidebar-brand-lockup .paiban-mark {
+  filter: drop-shadow(0 1px 1px oklch(0.25 0.03 268 / 0.08));
 }
 
 .workspace-mode {
@@ -490,25 +485,9 @@ body {
   box-shadow: var(--shadow-panel);
 }
 
-.login-card::before {
-  content: "";
-  position: absolute;
-  top: 26px;
-  right: 76px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 18px 0 0 var(--accent-sun), 36px 0 0 var(--accent-coral);
-}
-
-.wordmark {
-  font-size: 40px;
+.auth-wordmark {
   color: var(--text-primary);
-}
-
-.wordmark > span {
-  color: var(--primary);
+  text-wrap: nowrap;
 }
 
 .login-card h1 {
@@ -581,10 +560,6 @@ body {
     border-radius: 14px;
   }
 
-  .login-card::before {
-    top: 24px;
-    right: 64px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

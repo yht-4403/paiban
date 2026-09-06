@@ -1,5 +1,5 @@
 ---
-name: Accord
+name: 拍办
 description: 可信、克制而灵动的人机协作工作台
 colors:
   primary: "oklch(0.55 0.21 268)"
@@ -18,11 +18,11 @@ colors:
   danger: "oklch(0.56 0.21 25)"
 typography:
   brand:
-    fontFamily: "Georgia, Times New Roman, serif"
-    fontSize: "2.5rem"
-    fontWeight: 600
+    fontFamily: "Lexend Variable, PingFang SC, system-ui, sans-serif"
+    fontSize: "2rem"
+    fontWeight: 650
     lineHeight: 1
-    letterSpacing: "-0.04em"
+    letterSpacing: "-0.08em"
   headline:
     fontFamily: "Lexend Variable, PingFang SC, system-ui, sans-serif"
     fontSize: "1.5rem"
@@ -75,15 +75,15 @@ components:
     padding: "6px 0 0"
 ---
 
-# Design System: Accord
+# Design System: 拍办
 
 ## 1. Overview
 
 **Creative North Star: “可信任协作控制台”**
 
-Accord 的大部分时间应像一张干净、可靠的工作台：品牌色轻微渗入中性背景，栏位边界稳定，正文对比清楚。视觉变化服务于“现在是谁在回复、哪些资料可见、哪一步需要人拍板”，不为 AI 身份增加无意义的奇观。
+拍办的大部分时间应像一张干净、可靠的工作台：品牌色轻微渗入中性背景，栏位边界稳定，正文对比清楚。视觉变化服务于“现在是谁在回复、哪些资料可见、哪一步需要人拍板”，不为 AI 身份增加无意义的奇观。
 
-参考 Kimi 的是安静表面与聚焦输入的节奏，不复制它的品牌资产和界面结构。Accord 的识别来自蓝紫主色、衬线字标、冷中性分层，以及黄、珊瑚、紫三种只在少量时刻出现的“协作火花”。
+参考 Kimi 的是安静表面与聚焦输入的节奏，不复制它的品牌资产和界面结构。拍办的识别来自蓝紫与珊瑚色交扣的双圆标识、冷中性分层，以及黄色只在共同结论处出现的一点“协作火花”。Logo 本身不放中文或英文，产品名“拍办”在界面中独立排版。
 
 **Key Characteristics:**
 
@@ -99,7 +99,7 @@ Accord 的大部分时间应像一张干净、可靠的工作台：品牌色轻�
 
 ### Primary
 
-- **Accord Cobalt** (`oklch(0.55 0.21 268)`): 主按钮、发送、焦点、当前选择。
+- **拍办蓝** (`oklch(0.55 0.21 268)`): 主按钮、发送、焦点、当前选择。
 - **Cobalt Soft** (`oklch(0.95 0.035 268)`): 选中行、Agent 回答和信息提示的低强调背景。
 
 ### Secondary
@@ -120,21 +120,21 @@ Accord 的大部分时间应像一张干净、可靠的工作台：品牌色轻�
 
 ## 3. Typography
 
-**Display Font:** Georgia，仅用于 Accord 字标。
+**Brand Mark:** 蓝紫与珊瑚色双圆互扣，中央黄色节点表示共同结论；透明背景、无文字。
 
 **Body Font:** Lexend Variable，中文回退为 PingFang SC 和系统无衬线。
 
-**Character:** 字标提供一点人味与长期品牌感；产品界面保持单一无衬线系统，标签熟悉、数字稳定、中文正文清楚。
+**Character:** 图形标识提供协作识别，产品界面保持单一无衬线系统，标签熟悉、数字稳定、中文正文清楚。
 
 ### Hierarchy
 
-- **Brand** (600, 23–40px, 1): 仅用于登录和侧栏字标。
+- **Brand Name** (650, 17–32px, 1): 仅用于登录和侧栏中与图形标识并列的“拍办”。
 - **Headline** (600, 20–24px, 1.35): 页面主标题和首次空态标题。
 - **Title** (500–600, 14–16px, 1.45): 面板、任务与对话标题。
 - **Body** (400, 13–14px, 1.65–1.8): 消息、证据和说明，长文限制在约 70ch。
 - **Label** (500, 11–12px, 1.4): 状态、按钮和元数据；不使用全大写字距装饰。
 
-**The Product Type Rule.** 除字标外，不在按钮、导航、数据或状态标签中使用展示字体。
+**The Product Type Rule.** 品牌名与产品界面统一使用无衬线字体，不在按钮、导航、数据或状态标签中另加展示字体。
 
 ## 4. Elevation
 
@@ -153,7 +153,7 @@ Accord 的大部分时间应像一张干净、可靠的工作台：品牌色轻�
 ### Buttons
 
 - **Shape:** 6px 圆角，默认高 32px；移动端主要路径扩大到至少 44px 触控区域。
-- **Primary:** Accord Cobalt 实色配高对比前景，仅用于提交、发送、创建与明确放行。
+- **Primary:** 拍办蓝实色配高对比前景，仅用于提交、发送、创建与明确放行。
 - **Hover / Focus:** hover 加深；focus 使用 2px 品牌色焦点环；active 仅 1px 位移。
 - **Secondary / Ghost:** 次级表面或透明背景，避免与主操作争夺注意力。
 
@@ -189,7 +189,7 @@ Composer 是工作台首要操作面。白色表面、16px 圆角和轻结构阴
 
 ### Do:
 
-- **Do** 使用 Accord Cobalt 标记单屏唯一主操作，并保持高饱和视觉重量约 10% 以内。
+- **Do** 使用拍办蓝标记单屏唯一主操作，并保持高饱和视觉重量约 10% 以内。
 - **Do** 使用姓名、身份标签、状态文字和图标共同说明 Agent / 真人与权限范围。
 - **Do** 让大面积背景向品牌蓝紫轻微偏色，亮暗主题分别设计表面层级。
 - **Do** 复用 Tutti 组件的键盘、弹层和控件行为，只在语义令牌与业务样式层定制。

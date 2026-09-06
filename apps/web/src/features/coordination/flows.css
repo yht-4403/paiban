@@ -1,5 +1,16 @@
 .flows-page { overflow-y:auto; }
 .flow-editor { display:grid;gap:16px;border:1px solid var(--line-primary);border-radius:12px;padding:20px;margin:16px 0 24px;background:var(--background-primary); }
+.assignment-type-picker { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+.assignment-type-picker > button { display:flex;align-items:flex-start;gap:12px;min-height:76px;padding:12px;border:1px solid var(--line-primary);border-radius:12px;background:var(--background-fronted);text-align:left; }
+.assignment-type-picker > button:hover { background:var(--transparency-hover); }
+.assignment-type-picker > button.selected { border-color:var(--primary);background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--border-focus); }
+.assignment-type-picker > button > span:last-child { min-width:0; }
+.assignment-type-picker strong,.assignment-type-picker small { display:block; }
+.assignment-type-picker strong { font-size:13px;font-weight:600; }
+.assignment-type-picker small { margin-top:5px;color:var(--text-secondary);font-size:11px;line-height:1.5; }
+.assignment-type-icon { display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:6px;background:var(--background-secondary);color:var(--text-secondary); }
+.assignment-type-picker > button.selected .assignment-type-icon { color:var(--primary);background:var(--background-fronted); }
+.assignment-scope-note { margin:-4px 0 0;color:var(--text-secondary);font-size:11px;line-height:1.6; }
 .flow-members { border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:12px; }
 .flow-members legend { margin-bottom:12px;color:var(--text-secondary);font-size:12px; }
 .flow-members label,.state-sharing label { display:flex;align-items:center;gap:8px; }
@@ -7,12 +18,19 @@
 .flow-editor > .flow-actions { justify-content:flex-end; }
 .flow-list > button { width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 4px;text-align:left;border-bottom:1px solid var(--line-primary); }
 .flow-list > button:hover { background:var(--background-secondary); }
+.flow-list > button > span:nth-child(2) { flex:1;min-width:0; }
+.flow-list-icon { display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:6px;color:var(--primary);background:var(--accent-bg); }
+.flow-list-icon:empty { display:none; }
+.exploration-flow-row strong { overflow-wrap:anywhere; }
 .flow-list strong,.flow-list small,.flow-candidates small,.flow-suggestion small { display:block; }
 .flow-list small,.flow-candidates small,.flow-suggestion small,.flow-evidence small,.flow-status small { color:var(--text-secondary);font-size:12px;margin-top:4px; }
 .flow-status { display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--text-secondary);font-size:12px;margin:12px 0; }
 .flow-request { white-space:pre-wrap;color:var(--text-secondary);margin:16px 0; }
 .flow-candidates { margin:24px 0; }
 .flow-candidates h2 { font-size:14px;margin-bottom:12px; }
+.flow-candidate-heading { display:flex;align-items:baseline;justify-content:space-between;gap:16px; }
+.flow-candidate-heading h2 { margin-bottom:12px; }
+.flow-candidate-heading small { margin:0; }
 .flow-candidates > label { display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--line-primary); }
 .flow-candidates > button { margin-top:16px; }
 .flow-suggestions { border-top:1px solid var(--line-primary);padding-top:16px;margin-top:16px; }
@@ -22,7 +40,7 @@
 .flow-next-person { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line-primary); }
 .flow-next-person > span { min-width:0; }
 .flow-next-person strong,.flow-next-person small { display:block; }
-.flow-follow-up { margin:24px 0;padding:16px;border:1px solid var(--line-primary);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--background-secondary); }
+.flow-follow-up { margin:24px 0;padding:16px;border:1px solid var(--line-primary);border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--background-secondary); }
 .flow-follow-up strong,.flow-follow-up small { display:block; }
 .flow-follow-up small { margin-top:4px;color:var(--text-secondary);font-size:12px; }
 .flow-evidence { margin:24px 0;color:var(--text-secondary); }
@@ -31,7 +49,7 @@
 .chat-closed { padding:12px 24px;display:flex;justify-content:space-between;align-items:center;color:var(--text-secondary); }
 .state-sharing { font-size:12px;color:var(--text-secondary);margin-bottom:16px; }
 .flow-toolbar { display:flex;justify-content:space-between;align-items:center;padding:8px 24px;border-bottom:1px solid var(--line-primary);gap:8px; }
-@media(max-width:760px) { .flow-editor {padding:12px;} .flow-suggestion,.flow-follow-up {align-items:flex-start;flex-direction:column;} .chat-summary {padding:12px;max-height:45vh;} }
+@media(max-width:760px) { .flow-editor {padding:12px;} .assignment-type-picker {grid-template-columns:1fr;} .flow-suggestion,.flow-follow-up {align-items:flex-start;flex-direction:column;} .flow-candidate-heading {align-items:flex-start;flex-direction:column;gap:0;} .chat-summary {padding:12px;max-height:45vh;} }
 
 .flow-pending {display:flex;justify-content:space-between;gap:16px;width:100%;text-align:left;padding:12px 0;border-bottom:1px solid var(--line-primary);font-size:12px;}
 .flow-pending span {color:var(--text-secondary);white-space:nowrap;}

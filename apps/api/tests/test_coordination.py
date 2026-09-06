@@ -42,12 +42,13 @@ class CoordinationTests(unittest.TestCase):
             )
         )
 
-    def start(self, kind='sync', members=None, source_ids=None):
+    def start(self, kind='sync', members=None, source_ids=None, task_type='normal'):
         return self.post(
             'lin',
             '/flows',
             {
                 'kind': kind,
+                'task_type': task_type,
                 'title': '讨论交付 ' + uuid4().hex[:5],
                 'body': '需要真实证据',
                 'member_ids': members or [self.ids['su'], self.ids['zhou']],
@@ -296,7 +297,7 @@ class CoordinationTests(unittest.TestCase):
             status=422,
         )
 
-    def test_coordination_migration_preserves_old_flows_and_adds_source_ids(self):
+    def test_coordination_migration_preserves_old_flows_and_adds_exploration_schema(self):
         code = r'''
 import json
 import os
@@ -323,14 +324,237 @@ with tempfile.TemporaryDirectory() as directory:
       VALUES('flow_old','owner','sync','old','body','["owner"]','before','before');
     """)
     coordination.initialize()
-    row = db.execute("SELECT id,title,source_ids FROM accord_flows WHERE id='flow_old'").fetchone()
-    assert dict(row) == {'id': 'flow_old', 'title': 'old', 'source_ids': '[]'}, dict(row)
+    row = db.execute(
+        "SELECT id,title,source_ids,task_type,topic_id FROM accord_flows WHERE id='flow_old'"
+    ).fetchone()
+    assert dict(row) == {
+        'id': 'flow_old', 'title': 'old', 'source_ids': '[]',
+        'task_type': 'normal', 'topic_id': ''
+    }, dict(row)
+    assert db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='accord_task_topics'"
+    ).fetchone()
+    assert db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='accord_round_directions'"
+    ).fetchone()
 '''
         env = dict(os.environ, PYTHONPATH=str(os.path.dirname(os.path.dirname(__file__))))
         completed = subprocess.run(
             [sys.executable, '-c', code], env=env, capture_output=True, text=True
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_old_normal_start_operation_replays_after_type_upgrade(self):
+        import hashlib
+
+        operation_id = str(uuid4())
+        payload = {
+            'operation_id': operation_id,
+            'kind': 'assignment',
+            'title': '跨版本重放',
+            'body': '升级前未包含任务类型。',
+            'member_ids': [self.ids['su']],
+            'source_ids': [],
+        }
+        fingerprint = hashlib.sha256(
+            ('flow:start' + json.dumps(payload, sort_keys=True)).encode()
+        ).hexdigest()
+        store.execute(
+            'INSERT INTO accord_operations(actor,operation_id,fingerprint,status,result) '
+            'VALUES(?,?,?,?,?)',
+            (self.ids['lin'], operation_id, fingerprint, 'done', '{"id":"flow_legacy"}'),
+        )
+        self.addCleanup(
+            lambda: store.execute(
+                'DELETE FROM accord_operations WHERE actor=? AND operation_id=?',
+                (self.ids['lin'], operation_id),
+            )
+        )
+        replayed = self.post(
+            'lin',
+            '/flows',
+            {
+                'kind': payload['kind'],
+                'title': payload['title'],
+                'body': payload['body'],
+                'member_ids': payload['member_ids'],
+            },
+            operation=operation_id,
+        )
+        self.assertEqual(replayed, {'id': 'flow_legacy'})
+
+    def test_assignment_type_defaults_validates_and_exploration_uses_topic_lifecycle(self):
+        normal = self.post(
+            'lin',
+            '/flows',
+            {
+                'kind': 'assignment',
+                'title': '旧请求默认普通任务',
+                'body': '请推荐一位负责人',
+                'member_ids': [self.ids['su']],
+            },
+        )['id']
+        self.assertEqual(self.get('lin', '/flows/' + normal)['task_type'], 'normal')
+        self.post(
+            'lin',
+            '/flows',
+            {
+                'kind': 'sync',
+                'task_type': 'exploration',
+                'title': '不支持的类型',
+                'body': '只有任务分配可用',
+                'member_ids': [self.ids['su']],
+            },
+            status=422,
+        )
+        self.post(
+            'lin',
+            '/flows',
+            {
+                'kind': 'assignment',
+                'task_type': 'unknown',
+                'title': '错误类型',
+                'body': '不应创建',
+                'member_ids': [self.ids['su']],
+            },
+            status=422,
+        )
+        store.execute("UPDATE accord_flows SET status='error' WHERE id=?", (normal,))
+
+        fid = self.start(
+            'assignment', members=[self.ids['su'], self.ids['zhou']], task_type='exploration'
+        )
+        self.run_flow(
+            fid,
+            {
+                'summary': '建议由两位成员独立探索。',
+                'candidates': [
+                    {'person_id': self.ids['su'], 'reason': '适合方向一'},
+                    {'person_id': self.ids['zhou'], 'reason': '适合方向二'},
+                ],
+                'actions': [],
+            },
+        )
+        operation = str(uuid4())
+        assigned = self.post(
+            'lin',
+            f'/flows/{fid}/choose',
+            {'member_ids': [self.ids['su']]},
+            operation=operation,
+        )
+        self.assertEqual(
+            assigned,
+            self.post(
+                'lin',
+                f'/flows/{fid}/choose',
+                {'member_ids': [self.ids['su']]},
+                operation=operation,
+            ),
+        )
+        self.assertEqual(assigned['task_type'], 'exploration')
+        self.assertTrue(assigned['topic_id'])
+        self.assertEqual(len(assigned['task_ids']), 2)
+        self.get('zhou', '/topics/' + assigned['topic_id'], status=404)
+        self.get('zhou', '/flows/' + fid, status=404)
+
+        own_tasks = {}
+        for who in ('lin', 'su'):
+            state = self.get(who, '/state')
+            topic = next(item for item in state['topics'] if item['id'] == assigned['topic_id'])
+            self.assertEqual(topic['task_type'], 'exploration')
+            self.assertEqual(topic['completion_state'], 'in_progress')
+            task = next(
+                item
+                for item in state['tasks']
+                if item['topic_id'] == assigned['topic_id'] and item['assignee_id'] == self.ids[who]
+            )
+            own_tasks[who] = task
+            self.assertEqual(task['task_type'], 'exploration')
+            self.assertEqual(task['exploration']['attention'], 'in_progress')
+            detail = self.get(who, f'/tasks/{task["id"]}/exploration')
+            self.assertEqual(detail['topic']['id'], assigned['topic_id'])
+
+        task_id = own_tasks['su']['id']
+        self.post('su', f'/tasks/{task_id}/tick', status=409)
+        self.post('su', f'/tasks/{task_id}/status', {'status': 'done'}, status=409)
+        self.post('su', f'/tasks/{task_id}/delete', status=409)
+
+        for who, label in (('lin', '轻量分岔'), ('su', '陪伴式探索')):
+            self.post(
+                who,
+                f'/topics/{assigned["topic_id"]}/direction',
+                {'expected_version': 0, 'label': label},
+            )
+        exploring = self.get('su', '/topics/' + assigned['topic_id'])
+        self.assertEqual(
+            {item['label'] for item in exploring['directions']}, {'轻量分岔', '陪伴式探索'}
+        )
+        self.assertEqual(exploring['proposals'], [])
+        self.assertEqual(exploring['public_direction_count'], 2)
+
+        self.post(
+            'lin',
+            f'/topics/{assigned["topic_id"]}/submit',
+            {
+                'expected_version': 0,
+                'title': '轻量分岔',
+                'body': '假设、流程、发现、风险和下一步。',
+            },
+        )
+        current = self.get('lin', '/topics/' + assigned['topic_id'])
+        self.post(
+            'lin',
+            f'/topics/{assigned["topic_id"]}/release',
+            {'expected_version': current['version']},
+            status=409,
+        )
+        self.post(
+            'su',
+            f'/topics/{assigned["topic_id"]}/submit',
+            {
+                'expected_version': 0,
+                'title': '陪伴式探索',
+                'body': '独立的假设、流程、发现、风险和下一步。',
+            },
+        )
+        ready = self.get('lin', '/topics/' + assigned['topic_id'])
+        self.assertTrue(ready['all_submitted'])
+        self.assertTrue(ready['is_highlighted'])
+        self.assertEqual(ready['attention'], 'ready_to_release')
+        self.assertEqual(ready['completion_state'], 'ready_for_review')
+        self.assertTrue(
+            next(
+                task
+                for task in self.get('su', '/state')['tasks']
+                if task['id'] == own_tasks['su']['id']
+            )['status']
+            == 'done'
+        )
+
+        self.post(
+            'lin',
+            f'/topics/{assigned["topic_id"]}/release',
+            {'expected_version': ready['version']},
+        )
+        reviewing = self.get('lin', '/topics/' + assigned['topic_id'])
+        self.assertEqual(reviewing['stage'], 'reviewing')
+        self.assertEqual(reviewing['direction_count'], 2)
+        self.assertEqual(reviewing['attention'], 'needs_decision')
+        self.assertEqual(len(reviewing['proposals']), 2)
+        self.post(
+            'lin',
+            f'/topics/{assigned["topic_id"]}/decision',
+            {
+                'expected_version': reviewing['version'],
+                'body': '选择轻量分岔，保留陪伴式探索的分歧；下一步用真实任务验证。',
+                'proposal_ids': [reviewing['proposals'][0]['proposal_id']],
+            },
+        )
+        decided = self.get('su', f'/tasks/{own_tasks["su"]["id"]}/exploration')
+        self.assertEqual(decided['topic']['stage'], 'decided')
+        self.assertEqual(decided['task']['exploration']['attention'], 'results_available')
+        self.assertTrue(decided['task']['exploration']['results_available'])
+        self.assertIn('下一步', decided['topic']['decision']['body'])
 
     def test_assignment_requires_selection_and_does_not_impersonate_acceptance(self):
         fid = self.start('assignment')
@@ -478,15 +702,35 @@ with tempfile.TemporaryDirectory() as directory:
         ready = self.get('lin', '/flows/' + fid)
         self.assertTrue(ready['follow_up']['ready'])
         self.assertEqual(ready['follow_up']['status'], 'suggested')
-        self.assertIn('已完成真实验收', next(a for a in ready['actions'] if a['task_id']==assigned)['task_artifact'])
-        self.assertTrue(next(f for f in self.get('lin','/state')['flows'] if f['id']==fid)['follow_up_ready'])
+        self.assertIn(
+            '已完成真实验收',
+            next(a for a in ready['actions'] if a['task_id'] == assigned)['task_artifact'],
+        )
+        self.assertTrue(
+            next(f for f in self.get('lin', '/state')['flows'] if f['id'] == fid)['follow_up_ready']
+        )
         operation = str(uuid4())
-        continued = self.post('lin', f'/flows/{fid}/follow-up', {'action':'create','kind':'sync'}, operation=operation)
-        self.assertEqual(self.post('lin', f'/flows/{fid}/follow-up', {'action':'create','kind':'sync'}, operation=operation)['id'],continued['id'])
-        next_flow = self.get('lin','/flows/'+continued['id'])
-        self.assertEqual(next_flow['kind'],'sync')
-        self.assertEqual(next_flow['status'],'queued')
-        self.assertFalse(next(f for f in self.get('lin','/state')['flows'] if f['id']==fid)['follow_up_ready'])
+        continued = self.post(
+            'lin',
+            f'/flows/{fid}/follow-up',
+            {'action': 'create', 'kind': 'sync'},
+            operation=operation,
+        )
+        self.assertEqual(
+            self.post(
+                'lin',
+                f'/flows/{fid}/follow-up',
+                {'action': 'create', 'kind': 'sync'},
+                operation=operation,
+            )['id'],
+            continued['id'],
+        )
+        next_flow = self.get('lin', '/flows/' + continued['id'])
+        self.assertEqual(next_flow['kind'], 'sync')
+        self.assertEqual(next_flow['status'], 'queued')
+        self.assertFalse(
+            next(f for f in self.get('lin', '/state')['flows'] if f['id'] == fid)['follow_up_ready']
+        )
 
     def peer(self):
         tid = self.post('lin', '/threads', {'target_id': self.ids['su']})['id']

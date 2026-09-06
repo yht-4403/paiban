@@ -27,10 +27,16 @@ def expect(actual, expected):
         raise DomainError(409, '内容已更新，请刷新后重试。你的输入已保留。')
 
 
-def operate(uid, body, action, fn):
-    fingerprint = hashlib.sha256(
-        (action + json.dumps(body.model_dump(), sort_keys=True)).encode()
-    ).hexdigest()
+def _fingerprint(action, payload):
+    return hashlib.sha256((action + json.dumps(payload, sort_keys=True)).encode()).hexdigest()
+
+
+def operate(uid, body, action, fn, legacy_payloads=None):
+    fingerprint = _fingerprint(action, body.model_dump())
+    accepted_fingerprints = {
+        fingerprint,
+        *(_fingerprint(action, payload) for payload in (legacy_payloads or [])),
+    }
     with store.lock, store.connection():
         db = store.connection()
         old = db.execute(
@@ -38,7 +44,7 @@ def operate(uid, body, action, fn):
             (uid, body.operation_id),
         ).fetchone()
         if old:
-            if old['fingerprint'] != fingerprint:
+            if old['fingerprint'] not in accepted_fingerprints:
                 raise DomainError(409, '请求标识已用于不同操作，请刷新后重试。')
             return json.loads(old['result'])
         result = fn(db)

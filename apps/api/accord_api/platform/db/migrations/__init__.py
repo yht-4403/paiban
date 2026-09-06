@@ -5,8 +5,10 @@ from accord_api.platform.db.migrations import (
     activity,
     auth,
     base,
+    brand,
     collaboration,
     coordination,
+    fixed_member_names,
     knowledge_index,
     model_settings,
     runtime,
@@ -24,5 +26,7 @@ def initialize():
     activity.initialize()
     coordination.initialize()
     knowledge_index.initialize()
+    brand.initialize()
+    fixed_member_names.initialize()
     if database.query_one("SELECT 1 FROM project_state WHERE key='accord_seed_v1'"):
         raise RuntimeError('请为真实工作空间设置独立的 ACCORD_DATA_DIR，旧参考数据保留原位。')

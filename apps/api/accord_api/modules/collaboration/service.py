@@ -196,7 +196,11 @@ def _handoff_brief(db, thread, note):
         ORDER BY rowid""",
         (thread['id'],),
     ).fetchall()
-    requester = [row['body'].strip() for row in rows if row['from_kind'] == 'human' and row['from_unit'] == thread['owner_id']]
+    requester = [
+        row['body'].strip()
+        for row in rows
+        if row['from_kind'] == 'human' and row['from_unit'] == thread['owner_id']
+    ]
     answers = [
         row['body'].strip()
         for row in rows
@@ -325,6 +329,8 @@ def task_status(*, task_id: str, body: TaskStatus, uid):
         task = db.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
         if not task or task['assignee_id'] != uid:
             raise DomainError(404, '待办不存在或需要负责人操作。')
+        if db.execute('SELECT 1 FROM accord_task_topics WHERE task_id=?', (task_id,)).fetchone():
+            raise DomainError(409, '创新探索任务请在课题中提交或撤回成果。')
         db.execute(
             'UPDATE tasks SET status=?,updated_at=? WHERE id=?', (body.status, store.now(), task_id)
         )
@@ -338,6 +344,8 @@ def delete_task(*, task_id: str, body: TaskDelete, uid):
         task = db.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
         if not task or task['assignee_id'] != uid:
             raise DomainError(404, '待办不存在或需要负责人操作。')
+        if db.execute('SELECT 1 FROM accord_task_topics WHERE task_id=?', (task_id,)).fetchone():
+            raise DomainError(409, '创新探索任务需保留课题与成果记录，不能单独删除。')
 
         now = store.now()
         db.execute(

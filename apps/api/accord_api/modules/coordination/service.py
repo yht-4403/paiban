@@ -6,6 +6,7 @@ from accord_api.modules.coordination import source_scope
 from accord_api.modules.identity import service as identity
 from accord_api.modules.knowledge import person_context
 from accord_api.modules.permissions import policy as access
+from accord_api.modules.topics import service as topics
 from accord_api.platform.commands import operate, text
 from accord_api.platform.db import database as store
 from accord_api.platform.errors import DomainError
@@ -19,6 +20,13 @@ def can_view(db, uid, row):
     if row['kind'] == 'chat_summary':
         return uid in json.loads(row['member_ids'])
     if row['kind'] == 'assignment':
+        if row['task_type'] == 'exploration' and row['topic_id']:
+            return bool(
+                db.execute(
+                    'SELECT 1 FROM accord_round_members WHERE round_id=? AND member_id=?',
+                    (row['topic_id'], uid),
+                ).fetchone()
+            )
         return bool(
             row['task_id']
             and db.execute(
@@ -41,14 +49,20 @@ def flow_for(db, uid, fid):
     return dict(row)
 
 
-def insert(db, uid, kind, title, body, members, thread_id='', source_ids=None):
+def visible_task_ids(db, uid, flow):
+    if flow['topic_id']:
+        return topics.visible_task_ids(db, flow['topic_id'], uid)
+    return [flow['task_id']] if flow['task_id'] else []
+
+
+def insert(db, uid, kind, title, body, members, thread_id='', source_ids=None, task_type='normal'):
     if any(not identity.shares_account_roster(uid, member) for member in members):
         raise DomainError(422, '请选择当前账号组的成员。')
     fid = store.new_id('flow')
     now = store.now()
     source_ids = list(source_ids or [])
     db.execute(
-        'INSERT INTO accord_flows(id,owner_id,kind,title,body,member_ids,source_ids,thread_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO accord_flows(id,owner_id,kind,title,body,member_ids,source_ids,thread_id,task_type,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
         (
             fid,
             uid,
@@ -58,6 +72,7 @@ def insert(db, uid, kind, title, body, members, thread_id='', source_ids=None):
             json.dumps(members),
             json.dumps(source_ids),
             thread_id,
+            task_type,
             now,
             now,
         ),
@@ -67,6 +82,8 @@ def insert(db, uid, kind, title, body, members, thread_id='', source_ids=None):
 
 def start(body, uid):
     def run(db):
+        if body.kind != 'assignment' and body.task_type != 'normal':
+            raise DomainError(422, '只有任务分配可以选择创新探索类型。')
         members = list(dict.fromkeys([uid, *body.member_ids]))
         if len(members) > 8 or any(
             not identity.shares_account_roster(uid, m)
@@ -88,15 +105,21 @@ def start(body, uid):
             text(body.body),
             members,
             source_ids=source_ids,
+            task_type=body.task_type if body.kind == 'assignment' else 'normal',
         )
 
-    return operate(uid, body, 'flow:start', run)
+    legacy_payloads = []
+    if body.task_type == 'normal' and 'task_type' not in body.model_fields_set:
+        legacy_payloads.append(
+            {key: value for key, value in body.model_dump().items() if key != 'task_type'}
+        )
+    return operate(uid, body, 'flow:start', run, legacy_payloads=legacy_payloads)
 
 
 def list_flows(db, uid):
     result = []
     for row in db.execute(
-        'SELECT id,owner_id,kind,title,status,thread_id,task_id,member_ids,created_at,updated_at FROM accord_flows ORDER BY updated_at DESC'
+        'SELECT id,owner_id,kind,task_type,title,status,thread_id,task_id,topic_id,member_ids,created_at,updated_at FROM accord_flows ORDER BY updated_at DESC'
     ):
         if can_view(db, uid, row):
             next_meeting = follow_up(db, row['id'])
@@ -104,6 +127,7 @@ def list_flows(db, uid):
                 {
                     **dict(row),
                     'member_ids': json.loads(row['member_ids']),
+                    'task_ids': visible_task_ids(db, uid, row),
                     'pending_action_count': db.execute(
                         "SELECT count(*) FROM accord_flow_actions WHERE flow_id=? AND assignee_id=? AND status='suggested'",
                         (row['id'], uid),
@@ -120,6 +144,7 @@ def detail(uid, fid):
         db = store.connection()
         f = flow_for(db, uid, fid)
         public = {key: value for key, value in f.items() if key != 'source_ids'}
+        task_ids = visible_task_ids(db, uid, f)
         evidence = json.loads(f['evidence'])
         try:
             for e in evidence:
@@ -131,12 +156,14 @@ def detail(uid, fid):
                 'evidence': [],
                 'actions': [],
                 'member_ids': json.loads(f['member_ids']),
+                'task_ids': task_ids,
                 'error': '来源共享范围已改变，请由发起人重新收集。',
                 'sources_changed': True,
             }
         return {
             **public,
             'member_ids': json.loads(f['member_ids']),
+            'task_ids': task_ids,
             'result': json.loads(f['result']),
             'evidence': [
                 {
@@ -280,14 +307,66 @@ def choose(body, uid, fid):
             raise DomainError(422, '请选择本轮成员。')
         if f['kind'] == 'assignment':
             candidates = {c['person_id'] for c in json.loads(f['result']).get('candidates', [])}
-            if len(members) != 1 or members[0] not in candidates:
-                raise DomainError(422, '请选择一位推荐人选。')
-            task_id, tid = create_task(db, uid, members[0], f['title'], f['body'])
-            db.execute(
-                "UPDATE accord_flows SET status='assigned',task_id=?,thread_id=?,updated_at=? WHERE id=?",
-                (task_id, tid, store.now(), fid),
+            if not set(members) <= candidates:
+                raise DomainError(422, '请选择本轮推荐的人选。')
+            if f['task_type'] == 'normal':
+                if len(members) != 1:
+                    raise DomainError(422, '普通任务请选择一位推荐人选。')
+                task_id, tid = create_task(db, uid, members[0], f['title'], f['body'])
+                db.execute(
+                    "UPDATE accord_flows SET status='assigned',task_id=?,thread_id=?,updated_at=? WHERE id=?",
+                    (task_id, tid, store.now(), fid),
+                )
+                return {
+                    'task_type': 'normal',
+                    'task_id': task_id,
+                    'task_ids': [task_id],
+                    'thread_id': tid,
+                    'topic_id': '',
+                }
+            if not members or len(members) > 3 or len(set([uid, *members])) < 2:
+                raise DomainError(422, '创新探索请选择一至三位同事。')
+            topic_id = topics.create_round(
+                db,
+                uid,
+                f['title'],
+                f['body'],
+                members,
+                json.loads(f['source_ids']),
             )
-            return {'task_id': task_id, 'thread_id': tid}
+            task_ids = []
+            owner_task_id = ''
+            owner_thread_id = ''
+            for member in topics.members(db, topic_id):
+                tid = topics.create_exploration(db, topic_id, member, f['title'] + ' · 我的探索')
+                task_id, _ = create_task(
+                    db,
+                    uid,
+                    member,
+                    f['title'],
+                    f['body'],
+                    tid,
+                    reason='创新探索分配',
+                )
+                db.execute(
+                    'INSERT INTO accord_task_topics(task_id,round_id,member_id,origin) VALUES(?,?,?,?)',
+                    (task_id, topic_id, member, 'live'),
+                )
+                task_ids.append(task_id)
+                if member == uid:
+                    owner_task_id = task_id
+                    owner_thread_id = tid
+            db.execute(
+                "UPDATE accord_flows SET status='assigned',task_id=?,thread_id=?,topic_id=?,updated_at=? WHERE id=?",
+                (owner_task_id, owner_thread_id, topic_id, store.now(), fid),
+            )
+            return {
+                'task_type': 'exploration',
+                'task_id': owner_task_id,
+                'task_ids': task_ids,
+                'thread_id': owner_thread_id,
+                'topic_id': topic_id,
+            }
         if f['kind'] != 'decision':
             raise DomainError(422, '同步简报无需开会。')
         members = list(dict.fromkeys([uid, *members]))
@@ -356,9 +435,7 @@ def finish_meeting(body, uid, fid):
 
 def action(body, uid, action_id, accept):
     def run(db):
-        row = db.execute(
-            'SELECT * FROM accord_flow_actions WHERE id=?', (action_id,)
-        ).fetchone()
+        row = db.execute('SELECT * FROM accord_flow_actions WHERE id=?', (action_id,)).fetchone()
         if not row:
             raise DomainError(404, '建议不存在。')
         f = flow_for(db, uid, row['flow_id'])

@@ -52,7 +52,7 @@ class PeopleTests(unittest.TestCase):
         self.preferences('su',True)
         self.assertTrue(self.post('su','/presence',body)['recorded'])
         visible=self.get('lin',f"/members/{self.ids['su']}/activity")
-        self.assertEqual(visible['label'],'在 Accord 工作');self.assertIsNone(visible['work'])
+        self.assertEqual(visible['label'],'在拍办工作');self.assertIsNone(visible['work'])
         self.preferences('su',True,True)
         visible=self.get('lin',f"/members/{self.ids['su']}/activity")
         self.assertEqual(visible['work']['title'],'OWN-SHARED-TITLE')
@@ -66,7 +66,7 @@ class PeopleTests(unittest.TestCase):
         tid=self.post('su','/threads',{'target_id':self.ids['zhou'],'title':'THIRD-PARTY-PRIVATE-TITLE'})['id']
         self.post('su','/presence',{'client_id':uuid4().hex,'surface':'chat','thread_id':tid})
         response=self.get('lin',f"/members/{self.ids['su']}/activity")
-        self.assertEqual(response['label'],'在 Accord 聊天');self.assertIsNone(response['work'])
+        self.assertEqual(response['label'],'在拍办聊天');self.assertIsNone(response['work'])
         self.assertNotIn('THIRD-PARTY-PRIVATE-TITLE',json.dumps(response))
         self.post('lin','/presence',{'client_id':uuid4().hex,'surface':'chat','thread_id':tid}) # disabled: no collection
         self.preferences('su',False)

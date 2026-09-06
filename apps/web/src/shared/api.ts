@@ -16,12 +16,35 @@ export type Material = Omit<Document, 'body'> & { origin?: 'folder' | 'thread' |
 export type Binding = { included: string[]; excluded: string[]; folder_ids?: string[]; version: number };
 export type Folder = { id: string; name: string; version: number; binding: Binding };
 export type ThreadContext = { resources: Material[]; available: Material[]; binding: Binding; folder_id: string; folder_version: number; mounted_folders?: {id: string; name: string; version: number}[] };
-export type TopicSummary = { id: string; title: string; owner_id: string; stage: 'exploring' | 'reviewing' | 'decided'; brief_id: string; deadline: string; version: number; member_ids: string[]; submitted_count: number; my_submitted: boolean; submission_version: number };
+export type ExplorationCompletionState = 'in_progress' | 'ready_for_review' | 'reviewing' | 'decided';
+export type ExplorationProgress = {
+  stage: 'exploring' | 'reviewing' | 'decided';
+  completion_state: ExplorationCompletionState;
+  submitted_count: number;
+  member_count: number;
+  direction_count: number;
+  public_direction_count?: number;
+  all_submitted: boolean;
+  is_highlighted: boolean;
+  attention?: 'in_progress' | 'ready_to_release' | 'waiting_for_release' | 'needs_decision' | 'results_available';
+  ready_to_release?: boolean;
+  needs_decision?: boolean;
+  results_available?: boolean;
+  origin?: 'live' | 'tutorial_fixture';
+  is_fixture?: boolean;
+};
+export type TopicSummary = {
+  id: string; title: string; owner_id: string; stage: 'exploring' | 'reviewing' | 'decided'; brief_id: string; deadline: string; version: number; member_ids: string[]; submitted_count: number; my_submitted: boolean; submission_version: number;
+  task_type?: 'exploration'; task_ids?: string[]; all_submitted?: boolean; direction_count?: number; public_direction_count?: number; completion_state?: ExplorationCompletionState; is_highlighted?: boolean; origin?: 'live' | 'tutorial_fixture'; is_fixture?: boolean;
+};
 export type Message = { id: string; conversation_id: string; from_kind: 'human' | 'agent' | 'system'; from_unit: string; body: string; sources: string[]; created_at: string; meta: {
   completion_id?: string; actor_id?: string; agent_id?: string; mode?: string; status?: 'queued' | 'running' | 'done' | 'error' | 'cancelled'; run_id?: string; model?: string; error?: string; finish_reason?: string; duration_ms?: number; usage?: { total_tokens?: number; reasoning_tokens?: number };
   reasoning_effort?: ReasoningEffort; phase?: 'connecting' | 'thinking' | 'reading' | 'answering'; citations?: ResourceRef[]; context_sources?: import('../features/workspace/KnowledgeTools').ContextSource[];
 } };
-export type Task = { updated_at?:string; assign_reason?:string; id: string; title: string; detail: string; status: string; assignee_id: string; creator_id: string; thread_id: string; priority: 'high'|'normal'|'low' };
+export type Task = {
+  updated_at?:string; assign_reason?:string; id: string; title: string; detail: string; status: string; assignee_id: string; creator_id: string; thread_id: string; priority: 'high'|'normal'|'low';
+  task_type?: 'normal' | 'exploration'; topic_id?: string; exploration?: ExplorationProgress | null;
+};
 export type State = { flows?:Flow[]; context_sharing?:{source_kind:'conversation'|'state';source_id:string;enabled:number;version:number}[]; content_connections?:ContentConnection[]; me: string; members: Member[]; groups?: (Thread & {preview:string})[]; threads: Thread[]; archived_threads: Thread[]; tasks: Task[]; documents: Document[];
   folders: Folder[]; topics: TopicSummary[]; activity_preferences:{automatic:boolean;work_title:boolean;version:number};
   model: { mode: string; label: string; selected_model: string; model_options: {id:string;label:string}[]; requests_today: number; reported_tokens_today: number; daily_limit: number; reasoning_effort: ReasoningEffort; reasoning_options: ReasoningEffort[] };

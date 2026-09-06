@@ -7,6 +7,7 @@ from accord_api.platform.commands import Operation
 
 class Start(Operation):
     kind: Literal['sync', 'decision', 'assignment']
+    task_type: Literal['normal', 'exploration'] = 'normal'
     title: str = Field(min_length=1, max_length=160)
     body: str = Field(min_length=1, max_length=8000)
     member_ids: list[str] = Field(default_factory=list, max_length=8)

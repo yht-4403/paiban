@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from accord_api.modules.activity.schemas import Availability, Heartbeat, Preference, Priority
 from accord_api.modules.identity import service as identity
 from accord_api.modules.permissions import policy as access
+from accord_api.modules.topics import service as topics
 from accord_api.platform.commands import expect, operate
 from accord_api.platform.db import database as store
 from accord_api.platform.errors import DomainError
@@ -126,10 +127,10 @@ def visible(db, viewer, subject):
     }
     if pref['automatic']:
         result.update(
-            label=('在 Accord 聊天' if presence['surface'] == 'chat' else '在 Accord 工作')
+            label=('在拍办聊天' if presence['surface'] == 'chat' else '在拍办工作')
             if presence and unit['window'] != 'closed'
             else label,
-            source='Accord' if presence else '本人设置',
+            source='拍办' if presence else '本人设置',
             seen_at=presence['seen_at'] if presence else None,
             agent_working=bool(
                 db.execute(
@@ -168,13 +169,19 @@ def visible(db, viewer, subject):
         except DomainError:
             continue
         result['shared_tasks'].append(
-            {
-                'id': row['id'],
-                'title': row['title'],
-                'status': row['status'],
-                'priority': task_priority(db, row['id']),
-                'thread_id': row['thread_id'],
-            }
+            topics.task_projection(
+                db,
+                viewer,
+                {
+                    'id': row['id'],
+                    'title': row['title'],
+                    'status': row['status'],
+                    'assignee_id': row['assignee_id'],
+                    'creator_id': row['creator_id'],
+                    'priority': task_priority(db, row['id']),
+                    'thread_id': row['thread_id'],
+                },
+            )
         )
     result['progress'] = {
         'completed': sum(task['status'] == 'done' for task in result['shared_tasks']),

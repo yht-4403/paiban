@@ -24,7 +24,7 @@ def context_messages(question, documents, history, target_name, peer, explicit_s
         else '你是用户的工作助手，可以分析问题、写作、解释和整理下一步。'
     )
     system = (
-        '你是 Accord 协作助手，默认用简体中文和清晰的 Markdown 回复。'
+        '你是拍办协作助手，默认用简体中文和清晰的 Markdown 回复。'
         + identity
         + '你只能读取本次提供的会话历史和共享资料；不了解其他会话、私人记忆或未提供的文件。'
         '可以使用一般知识，但团队事实必须依据共享资料或当前用户明确提供的信息。无依据时直接说明，不编造团队进度。'

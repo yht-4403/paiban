@@ -1,4 +1,4 @@
-# Accord Python 后端
+# 拍办 Python 后端
 
 单进程 FastAPI + SQLite 后端，Python 3.9+。采用按业务组织的模块化单体；模型通信、业务状态和资料权限分开维护。
 

@@ -32,10 +32,26 @@ def initialize():
           id TEXT PRIMARY KEY, flow_id TEXT NOT NULL, person_id TEXT NOT NULL,
           status TEXT NOT NULL, source_count INTEGER NOT NULL DEFAULT 0,
           usage TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS accord_task_topics(
+          task_id TEXT PRIMARY KEY, round_id TEXT NOT NULL, member_id TEXT NOT NULL,
+          origin TEXT NOT NULL DEFAULT 'live');
+        CREATE TABLE IF NOT EXISTS accord_round_directions(
+          round_id TEXT NOT NULL, member_id TEXT NOT NULL, label TEXT NOT NULL,
+          version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL,
+          PRIMARY KEY(round_id,member_id));
+        CREATE INDEX IF NOT EXISTS accord_task_topics_round ON accord_task_topics(round_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS accord_task_topics_member
+          ON accord_task_topics(round_id,member_id);
         """)
         flow_columns = {row['name'] for row in db.execute('PRAGMA table_info(accord_flows)')}
         if 'source_ids' not in flow_columns:
             db.execute("ALTER TABLE accord_flows ADD COLUMN source_ids TEXT NOT NULL DEFAULT '[]'")
+        if 'task_type' not in flow_columns:
+            db.execute(
+                "ALTER TABLE accord_flows ADD COLUMN task_type TEXT NOT NULL DEFAULT 'normal'"
+            )
+        if 'topic_id' not in flow_columns:
+            db.execute("ALTER TABLE accord_flows ADD COLUMN topic_id TEXT NOT NULL DEFAULT ''")
         unique_thread = any(
             index['unique']
             and [r['name'] for r in db.execute('PRAGMA index_info("' + index['name'] + '")')]

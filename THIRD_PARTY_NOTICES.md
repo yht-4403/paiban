@@ -13,12 +13,6 @@
 - npm 包随附 Apache-2.0 `LICENSE` 与第三方 `NOTICE`，副本保存在 `apps/web/public/licenses/tutti-ui-system/`，构建会保留。字体许可在 `apps/web/public/licenses/lexend/`（若包提供）。
 - Accord 页面、中文文案与业务逻辑由本项目实现；未修改上游组件源码，也未使用 Tutti 产品标志冒充官方产品。
 
-## Driver.js
-
-- 来源：https://github.com/nilbuild/driver.js ，实际依赖 `driver.js@1.8.0`。
-- 用途：仅为体验账号的教学演练提供界面聚光与元素定位；步骤状态、真实业务动作、失败恢复和账号隔离均由 Accord 自身实现。
-- 上游采用 MIT License，安装包中的 `LICENSE` 随依赖保留。
-
 ## 团队原型存储层
 
 `apps/api/accord_api/store.py` 基于团队飞书提供的堡天 MVP `server/store.py`。原始下载副本保留在 `.local/references/baotian-mvp-2026-09-05/`，原文件 SHA-256 为 `5401f18fd2d42a274686dcd1bdf979ba81f0c21b1de28c8624c2f523192e2000`。

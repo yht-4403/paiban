@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <mask id="paiban-interlock">
+      <rect width="64" height="64" fill="white" />
+      <path d="M28.5 18.7A15 15 0 0 1 36 22.1" fill="none" stroke="black" stroke-linecap="round" stroke-width="13" />
+    </mask>
+  </defs>
+  <circle cx="24" cy="32" r="15" fill="none" stroke="#536DFE" stroke-width="10" />
+  <circle cx="40" cy="32" r="15" fill="none" mask="url(#paiban-interlock)" stroke="#FF765A" stroke-width="10" />
+  <path d="M28.5 18.7A15 15 0 0 1 36 22.1" fill="none" stroke="#536DFE" stroke-linecap="round" stroke-width="10" />
+  <circle cx="32" cy="32" r="3.5" fill="#F6C84C" />
+</svg>

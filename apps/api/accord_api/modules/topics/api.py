@@ -2,7 +2,14 @@ from fastapi import APIRouter, Depends
 
 from accord_api.modules.identity.session import principal
 from accord_api.modules.topics import service as service
-from accord_api.modules.topics.schemas import Decision, Exploration, Handoff, NewTopic, Submission
+from accord_api.modules.topics.schemas import (
+    Decision,
+    Direction,
+    Exploration,
+    Handoff,
+    NewTopic,
+    Submission,
+)
 from accord_api.platform.commands import Operation, VersionedOperation
 
 router = APIRouter(prefix='/api/topics')
@@ -26,6 +33,11 @@ def explore(rid: str, body: Exploration, uid=Depends(principal)):
 @router.post('/{rid}/submit')
 def submit(rid: str, body: Submission, uid=Depends(principal)):
     return service.submit(rid=rid, body=body, uid=uid)
+
+
+@router.post('/{rid}/direction')
+def direction(rid: str, body: Direction, uid=Depends(principal)):
+    return service.direction(rid=rid, body=body, uid=uid)
 
 
 @router.post('/{rid}/withdraw')

@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Button } from '@tutti-os/ui-system';
 import { LoadingIcon } from '@tutti-os/ui-system/icons';
-import { driver, type Driver } from 'driver.js';
-import 'driver.js/dist/driver.css';
 import { api, command, type State, type Task, type ThreadData } from '../../shared/api';
 import type { View } from '../../shared/routes';
 import { runTutorialAction, type TutorialActionName, type TutorialActionPayload, type TutorialActionResult } from './bridge';
@@ -20,16 +18,14 @@ const TUTORIAL_SOURCE_BY_MEMBER: Record<(typeof TUTORIAL_TRIAL_ACCOUNT_IDS)[numb
   [TRIAL_THREE]: 'tutorial_context_fixed_trial_3_v1',
 };
 const TUTORIAL_FLOW_SOURCE_IDS = TUTORIAL_TRIAL_ACCOUNT_IDS.map(id => TUTORIAL_SOURCE_BY_MEMBER[id]);
-const STORAGE_KEY = 'accord.guided-tutorial.v2';
+const STORAGE_KEY = 'accord.guided-tutorial.v3';
 
 export const tutorialCopy = {
-  chat: '明天的 Accord 路演应该聚焦哪三个动作？请只依据你已共享的资料回答，并列出来源。',
+  chat: '明天的拍办路演应该聚焦哪三个动作？请只依据你已共享的资料回答，并列出来源。',
   meeting: '请在路演前确定三段演示的最终主线、90 秒开场稿和 1440 × 900 界面验收范围。先收集三位成员的上下文，推荐必要参会者；正式会议中再由人确认分工。',
   ownerLine: '今天拍板三段演示：问同事 Agent、开决策会、分配并完成任务。体验者二负责定稿 90 秒开场稿，体验者三负责完成 1440 × 900 界面复核；请两位确认。',
-  productLine: '确认。我负责定稿 90 秒开场稿，今天完成后把完整稿件放入团队工作池。',
-  uiLine: '确认。我负责完成 1440 × 900 界面复核，今天提交包含结论和检查项的复核记录。',
-  productCompletionTitle: 'Accord 90 秒开场稿 · 完成记录',
-  uiCompletionTitle: 'Accord 工作台 1440 宽度复核 · 完成记录',
+  productLine: '确认。我负责定稿 90 秒开场稿，今天在自己的工作台对话里完成并提交结果。',
+  uiLine: '确认。我负责完成 1440 × 900 界面复核，今天在自己的工作台对话里整理结论和检查项。',
 };
 
 type Phase =
@@ -38,8 +34,8 @@ type Phase =
   | 'meeting-ready' | 'meeting-prepare-wait' | 'meeting-attendees'
   | 'meeting-one-ready' | 'meeting-two-ready' | 'meeting-three-ready' | 'meeting-finish-ready'
   | 'meeting-summary-wait' | 'meeting-actions'
-  | 'completion-two-ready' | 'completion-two-wait'
-  | 'completion-three-ready' | 'completion-three-wait'
+  | 'completion-two-work-ready' | 'completion-two-work-wait' | 'completion-two-ready' | 'completion-two-wait'
+  | 'completion-three-work-ready' | 'completion-three-work-wait' | 'completion-three-ready' | 'completion-three-wait'
   | 'followup-ready' | 'followup-wait'
   | 'done' | 'error';
 
@@ -50,17 +46,17 @@ const PHASES: Phase[] = [
   'meeting-ready', 'meeting-prepare-wait', 'meeting-attendees',
   'meeting-one-ready', 'meeting-two-ready', 'meeting-three-ready', 'meeting-finish-ready',
   'meeting-summary-wait', 'meeting-actions',
-  'completion-two-ready', 'completion-two-wait',
-  'completion-three-ready', 'completion-three-wait',
+  'completion-two-work-ready', 'completion-two-work-wait', 'completion-two-ready', 'completion-two-wait',
+  'completion-three-work-ready', 'completion-three-work-wait', 'completion-three-ready', 'completion-three-wait',
   'followup-ready', 'followup-wait', 'done', 'error',
 ];
 const RECOVERIES: Recovery[] = ['prepare', 'chat', 'meeting', 'actions', 'completion-two', 'completion-three', 'followup'];
 
 type TutorialSession = {
-  version: 2; active: true; paused: boolean; phase: Phase; prepared: boolean;
+  version: 3; active: true; paused: boolean; phase: Phase; prepared: boolean;
   chatThreadId: string; chatBaseline: string[]; meetingFlowId: string; meetingThreadId: string;
-  taskTwoId: string; taskThreeId: string; completionTwoResourceId: string; completionThreeResourceId: string;
-  completionFlowId: string; completionThreadId: string; nextFlowId: string;
+  taskTwoId: string; taskThreeId: string; completionTwoThreadId: string; completionThreeThreadId: string;
+  completionBaseline: string[]; completionFlowId: string; nextFlowId: string;
   error: string; recovery: Recovery; errorStep: number;
 };
 
@@ -74,6 +70,8 @@ type FlowDetail = {
   follow_up?: { ready: boolean; status: 'waiting' | 'suggested' | 'created' | 'dismissed'; next_flow_id: string; completed_count: number; task_count: number };
 };
 type TaskActionResult = { ok: boolean; flowId?: string; threadId?: string };
+type TutorialPanelPosition = { left: number; top: number };
+type TutorialPanelDrag = { pointerId: number; offsetLeft: number; offsetTop: number };
 type Props = {
   startSignal: number; state: State; data: ThreadData | null; view: View; routeId: string | null; busy: boolean;
   onNavigate: (view: View, id?: string | null) => void; onOpenTrialChat: (id: string) => Promise<string | null>;
@@ -81,20 +79,32 @@ type Props = {
   onTask: (task: Task) => Promise<TaskActionResult>;
 };
 
+const PANEL_VIEWPORT_GAP = 8;
+
+function clampPanelPosition(left: number, top: number, width: number, height: number): TutorialPanelPosition {
+  const maxLeft = Math.max(PANEL_VIEWPORT_GAP, window.innerWidth - width - PANEL_VIEWPORT_GAP);
+  const maxTop = Math.max(PANEL_VIEWPORT_GAP, window.innerHeight - height - PANEL_VIEWPORT_GAP);
+  return {
+    left: Math.min(Math.max(left, PANEL_VIEWPORT_GAP), maxLeft),
+    top: Math.min(Math.max(top, PANEL_VIEWPORT_GAP), maxTop),
+  };
+}
+
 const emptySession = (): TutorialSession => ({
-  version: 2, active: true, paused: false, phase: 'intro', prepared: false, chatThreadId: '', chatBaseline: [],
-  meetingFlowId: '', meetingThreadId: '', taskTwoId: '', taskThreeId: '', completionTwoResourceId: '',
-  completionThreeResourceId: '', completionFlowId: '', completionThreadId: '', nextFlowId: '', error: '', recovery: 'prepare', errorStep: 1,
+  version: 3, active: true, paused: false, phase: 'intro', prepared: false, chatThreadId: '', chatBaseline: [],
+  meetingFlowId: '', meetingThreadId: '', taskTwoId: '', taskThreeId: '', completionTwoThreadId: '',
+  completionThreeThreadId: '', completionBaseline: [], completionFlowId: '', nextFlowId: '', error: '', recovery: 'prepare', errorStep: 1,
 });
 
 function restoreSession(): TutorialSession | null {
   try {
     const value = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null') as Partial<TutorialSession> | null;
-    if (!value || value.version !== 2 || value.active !== true || !PHASES.includes(value.phase as Phase)) return null;
+    if (!value || value.version !== 3 || value.active !== true || !PHASES.includes(value.phase as Phase)) return null;
     if (value.paused !== undefined && typeof value.paused !== 'boolean') return null;
     if (value.prepared !== undefined && typeof value.prepared !== 'boolean') return null;
     if (value.chatBaseline !== undefined && (!Array.isArray(value.chatBaseline) || value.chatBaseline.some(id => typeof id !== 'string'))) return null;
-    const keys: (keyof TutorialSession)[] = ['chatThreadId', 'meetingFlowId', 'meetingThreadId', 'taskTwoId', 'taskThreeId', 'completionTwoResourceId', 'completionThreeResourceId', 'completionFlowId', 'completionThreadId', 'nextFlowId', 'error'];
+    if (value.completionBaseline !== undefined && (!Array.isArray(value.completionBaseline) || value.completionBaseline.some(id => typeof id !== 'string'))) return null;
+    const keys: (keyof TutorialSession)[] = ['chatThreadId', 'meetingFlowId', 'meetingThreadId', 'taskTwoId', 'taskThreeId', 'completionTwoThreadId', 'completionThreeThreadId', 'completionFlowId', 'nextFlowId', 'error'];
     if (keys.some(key => value[key] !== undefined && typeof value[key] !== 'string')) return null;
     if (value.recovery !== undefined && !RECOVERIES.includes(value.recovery)) return null;
     if (value.errorStep !== undefined && (!Number.isInteger(value.errorStep) || value.errorStep! < 1 || value.errorStep! > 7)) return null;
@@ -116,6 +126,24 @@ function meetingActionIssue(flow: FlowDetail) {
   if (!flow.actions.some(action => action.assignee_id === TRIAL_TWO)) return '会议纪要没有识别到体验者二明确承诺的开场稿任务。';
   if (!flow.actions.some(action => action.assignee_id === TRIAL_THREE)) return '会议纪要没有识别到体验者三明确承诺的界面复核任务。';
   return '';
+}
+type CompletionMember = typeof TRIAL_TWO | typeof TRIAL_THREE;
+type CompletionStage = 'work-ready' | 'work-wait' | 'ready' | 'wait';
+function completionPhase(memberId: CompletionMember, stage: CompletionStage): Phase {
+  return `${memberId === TRIAL_TWO ? 'completion-two' : 'completion-three'}-${stage}` as Phase;
+}
+function completionTaskId(session: TutorialSession, memberId: CompletionMember) {
+  return memberId === TRIAL_TWO ? session.taskTwoId : session.taskThreeId;
+}
+function completionThreadId(session: TutorialSession, memberId: CompletionMember) {
+  return memberId === TRIAL_TWO ? session.completionTwoThreadId : session.completionThreeThreadId;
+}
+function completionPrompt(memberId: CompletionMember, task: Task) {
+  const quotedTask = `待办：${task.title}${task.detail.trim() ? `\n${task.detail.trim()}` : ''}`;
+  const work = memberId === TRIAL_TWO
+    ? '请直接完成这项待办：根据本轮会议结论，写出一版可以直接使用的 90 秒开场稿。稿件要讲清问题、拍办的解决方式和三段演示主线，保留资料授权、人类拍板与真实完成证据。直接给出完整成稿，不要只列计划。'
+    : '我已在 1440 × 900 下检查当前工作台：聊天主区、右侧待办与工作池、来源入口和关键按钮都可见，没有横向滚动。请直接完成这项待办，把检查结果整理成简短的复核结论和检查项，并注明本次没有覆盖的边界。';
+  return `${quotedTask}\n\n${work}`;
 }
 function phaseAccount(session: TutorialSession) {
   if (session.phase === 'meeting-two-ready' || session.phase.startsWith('completion-two')) return TRIAL_TWO;
@@ -142,24 +170,6 @@ function phaseStep(session: TutorialSession) {
   if (session.phase.startsWith('completion-three')) return 6;
   return 7;
 }
-function phaseTarget(session: TutorialSession) {
-  if (session.phase === 'error') return '#main-content';
-  if (session.phase === 'intro') return '[data-tour="work-pool"]';
-  if (session.phase === 'chat-ready') return '[data-tour="composer"]';
-  if (session.phase === 'chat-wait' || session.phase === 'chat-result') return '[data-tour="conversation-log"]';
-  if (session.phase === 'meeting-ready') return '[data-tour="flow-editor"]';
-  if (session.phase === 'meeting-prepare-wait' || session.phase === 'meeting-summary-wait') return '[data-tour="flow-status"]';
-  if (session.phase === 'meeting-attendees') return '[data-tour="flow-candidates"]';
-  if (['meeting-one-ready', 'meeting-two-ready', 'meeting-three-ready'].includes(session.phase)) return '[data-tour="composer"]';
-  if (session.phase === 'meeting-finish-ready') return '[data-tour="meeting-finish"]';
-  if (session.phase === 'meeting-actions') return '.flow-suggestions';
-  if (session.phase === 'completion-two-ready') return `[data-tour-task="${session.taskTwoId}"]`;
-  if (session.phase === 'completion-three-ready') return `[data-tour-task="${session.taskThreeId}"]`;
-  if (session.phase === 'completion-two-wait' || session.phase === 'completion-three-wait') return '[data-tour="conversation-log"]';
-  if (session.phase === 'followup-ready') return '[data-tour="flow-follow-up"]';
-  if (session.phase === 'followup-wait' || session.phase === 'done') return '[data-tour="flow-status"]';
-  return '#main-content';
-}
 function phaseContent(session: TutorialSession) {
   if (session.phase === 'intro') return { title: session.prepared ? '共享资料已就绪' : '正在准备共享资料', description: session.prepared ? '三位体验成员各有一份团队可读资料。' : '只补齐资料，不预制回答和业务结果。', action: session.prepared ? '去问同事 Agent' : '正在准备', disabled: !session.prepared };
   if (session.phase === 'chat-ready') return { title: '先问同事 Agent', description: '问题已经填好；发送后 Agent 会真实查阅体验者二的资料。', action: '发送问题', disabled: false };
@@ -174,9 +184,13 @@ function phaseContent(session: TutorialSession) {
   if (session.phase === 'meeting-finish-ready') return { title: '结束真人会议', description: '结束后 Agent 才整理纪要和行动项。', action: '结束会议', disabled: false };
   if (session.phase === 'meeting-summary-wait') return { title: '正在整理会议纪要', description: '系统会识别明确承诺，不替成员补任务。', action: '等待纪要', disabled: true };
   if (session.phase === 'meeting-actions') return { title: '发布会后任务', description: '把两位成员已确认的行动项正式放进各自待办。', action: '确认分配', disabled: false };
-  if (session.phase === 'completion-two-ready') return { title: '体验者二完成待办', description: '开场稿已放入工作池；勾选后由 Agent 核验。', action: '勾选待办', disabled: false };
+  if (session.phase === 'completion-two-work-ready') return { title: '在对话里完成开场稿', description: '待办已引用到体验者二的工作台；发送后由自己的 Agent 直接完成稿件。', action: '发送并开始工作', disabled: false };
+  if (session.phase === 'completion-two-work-wait') return { title: '正在完成开场稿', description: '等待本轮工作对话产生可以直接使用的结果。', action: '等待工作结果', disabled: true };
+  if (session.phase === 'completion-two-ready') return { title: '开场稿已经完成', description: '结果就在当前工作台对话中；现在由本人点击完成待办。', action: '勾选待办', disabled: false };
   if (session.phase === 'completion-two-wait') return { title: '正在核验开场稿', description: '有真实完成证据才会关闭待办。', action: '等待核验', disabled: true };
-  if (session.phase === 'completion-three-ready') return { title: '体验者三完成待办', description: '界面复核记录已放入工作池；勾选后由 Agent 核验。', action: '勾选待办', disabled: false };
+  if (session.phase === 'completion-three-work-ready') return { title: '在对话里完成界面复核', description: '待办已引用到体验者三的工作台；发送后整理真实检查结论。', action: '发送并开始工作', disabled: false };
+  if (session.phase === 'completion-three-work-wait') return { title: '正在整理界面复核', description: '等待本轮工作对话生成结论和检查项。', action: '等待工作结果', disabled: true };
+  if (session.phase === 'completion-three-ready') return { title: '界面复核已经完成', description: '结果就在当前工作台对话中；现在由本人点击完成待办。', action: '勾选待办', disabled: false };
   if (session.phase === 'completion-three-wait') return { title: '正在核验界面复核', description: '完成结果会回到原会议。', action: '等待核验', disabled: true };
   if (session.phase === 'followup-ready') return { title: '两项会后任务均已完成', description: '系统提出下一次同步，由发起人决定是否开始。', action: '发起下一次同步', disabled: false };
   if (session.phase === 'followup-wait') return { title: '正在汇总最新结果', description: '下一轮会读取两位成员刚完成的成果。', action: '等待同步', disabled: true };
@@ -190,23 +204,21 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
   const [visible, setVisible] = useState(() => { const restored = restoreSession(); return !!restored && !restored.paused; });
   const [acting, setActing] = useState(false);
   const [pointer, setPointer] = useState<{ left: number; top: number } | null>(null);
+  const [panelPosition, setPanelPosition] = useState<TutorialPanelPosition | null>(null);
+  const [panelDragging, setPanelDragging] = useState(false);
   const lastStart = useRef(startSignal);
   const preparing = useRef(false);
   const transitioning = useRef(false);
-  const driverRef = useRef<Driver | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const panelDragRef = useRef<TutorialPanelDrag | null>(null);
   const reducedMotion = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, []);
-
-  useEffect(() => {
-    driverRef.current = driver({ animate: !reducedMotion, duration: reducedMotion ? 0 : 220, overlayOpacity: .5, overlayColor: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim(), allowClose: false, allowKeyboardControl: false, disableActiveInteraction: true, smoothScroll: !reducedMotion, stagePadding: 8, stageRadius: 10, showButtons: [], waitForElement: 4000, skipMissingElement: false, popoverClass: 'accord-tutorial-driver-popover' });
-    return () => { driverRef.current?.destroy(); driverRef.current = null; };
-  }, [reducedMotion]);
 
   const replaceSession = (next: TutorialSession | null) => { sessionRef.current = next; setSession(next); if (next) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next)); else sessionStorage.removeItem(STORAGE_KEY); };
   const update = (values: Partial<TutorialSession>) => { const current = sessionRef.current; if (current) replaceSession({ ...current, ...values }); };
   const fail = (error: unknown, recovery: Recovery, errorStep: number) => update({ phase: 'error', error: error instanceof Error ? error.message : '当前步骤没有完成，请重试。', recovery, errorStep });
   const releasePage = () => window.dispatchEvent(new Event('accord:tutorial-release'));
-  const pause = () => { driverRef.current?.destroy(); setPointer(null); releasePage(); update({ paused: true }); setVisible(false); };
-  const finish = () => { driverRef.current?.destroy(); setPointer(null); releasePage(); setVisible(false); replaceSession(null); };
+  const pause = () => { setPointer(null); releasePage(); update({ paused: true }); setVisible(false); };
+  const finish = () => { setPointer(null); setPanelPosition(null); releasePage(); setVisible(false); replaceSession(null); };
   const cue = async (selector: string) => {
     let element: HTMLElement | null = null;
     for (let attempt = 0; attempt < 40; attempt += 1) { element = document.querySelector(selector) as HTMLElement | null; if (element) break; await sleep(100); }
@@ -215,8 +227,49 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
     await sleep(reducedMotion ? 20 : 140);
     const box = element.getBoundingClientRect();
     setPointer({ left: Math.min(window.innerWidth - 38, Math.max(8, box.right - 24)), top: Math.min(window.innerHeight - 44, Math.max(8, box.top + Math.min(box.height / 2, 30))) });
-    element.classList.add('tutorial-action-cue'); await sleep(reducedMotion ? 120 : 660); element.classList.remove('tutorial-action-cue'); setPointer(null);
+    await sleep(reducedMotion ? 120 : 660); setPointer(null);
   };
+
+  const clampPanelToViewport = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    setPanelPosition(current => {
+      if (!current) return current;
+      const next = clampPanelPosition(current.left, current.top, panel.offsetWidth, panel.offsetHeight);
+      return next.left === current.left && next.top === current.top ? current : next;
+    });
+  }, []);
+  const stopPanelDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = panelDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    panelDragRef.current = null;
+    setPanelDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+  const handlePanelPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest('button, a, input, textarea, select, [role="button"]')) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const box = panel.getBoundingClientRect();
+    panelDragRef.current = { pointerId: event.pointerId, offsetLeft: event.clientX - box.left, offsetTop: event.clientY - box.top };
+    setPanelPosition({ left: box.left, top: box.top });
+    setPanelDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+  const handlePanelPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = panelDragRef.current;
+    const panel = panelRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !panel) return;
+    setPanelPosition(clampPanelPosition(event.clientX - drag.offsetLeft, event.clientY - drag.offsetTop, panel.offsetWidth, panel.offsetHeight));
+  };
+
+  useLayoutEffect(() => { clampPanelToViewport(); }, [clampPanelToViewport, session?.phase, visible]);
+  useEffect(() => {
+    window.addEventListener('resize', clampPanelToViewport);
+    return () => window.removeEventListener('resize', clampPanelToViewport);
+  }, [clampPanelToViewport]);
 
   const prepare = async () => {
     if (preparing.current) return;
@@ -257,27 +310,39 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
     const draftId = `accord.draft.${accountId}.${current.meetingThreadId}.group`;
     await cue('[data-tour="composer-send"]'); await runTutorialAction('composer.send', { draftId, expectedValue: line, sourceIds: [] }); await sleep(420);
   };
-  const completionBody = (memberId: string, task: Task) => memberId === TRIAL_TWO
-    ? `# Accord 90 秒开场稿完成记录\n\n关联待办：${task.id}\n\n## 开场稿\n\n团队协作的瓶颈，常常不是没人做，而是每个人都在反复解释自己做过什么。Accord 为每位成员提供一个只读取授权资料的专属 Agent：同事先问 Agent，资料不足再在原对话找本人；会议前自动收集上下文，会议后把真人确认的行动项送入负责人待办；完成结果会回到原会议，帮助团队在需要时立刻开始下一轮同步。\n\n## 已完成\n\n- 明确问题、解决方式与三段演示主线。\n- 控制在 90 秒内可讲完。\n- 保留资料授权、人类拍板和真实完成证据。`
-    : `# Accord 工作台 1440 宽度复核完成记录\n\n关联待办：${task.id}\n\n## 复核结论\n\n已在 1440 × 900 浏览器视口完成 Accord 工作台复核。聊天主区、右侧待办与工作池、来源入口和关键按钮均可见，无横向滚动。\n\n## 已检查\n\n- 同事 Agent 回答与来源在同一消息流查看。\n- 真人会议输入框不再出现 Agent 入口。\n- 会后行动项、完成回执与下一次同步入口层级清楚。\n- 页面没有倒计时弹窗。`;
-  const prepareCompletion = async (memberId: typeof TRIAL_TWO | typeof TRIAL_THREE, taskId: string) => {
-    const next = await onSwitchAccount(memberId); onNavigate('workspace'); onContext(true);
+  const prepareCompletionWork = async (memberId: CompletionMember, taskId: string) => {
+    const next = await onSwitchAccount(memberId); onContext(true);
     const task = next.tasks.find(item => item.id === taskId && item.assignee_id === memberId);
     if (!task) throw new Error(`${memberId === TRIAL_TWO ? '体验者二' : '体验者三'}尚未收到会议待办。`);
-    await cue('[data-tour="work-pool"]');
-    const title = memberId === TRIAL_TWO ? tutorialCopy.productCompletionTitle : tutorialCopy.uiCompletionTitle;
-    const field = memberId === TRIAL_TWO ? 'completionTwoResourceId' : 'completionThreeResourceId';
-    let resourceId = sessionRef.current?.[field] || '';
-    if (!resourceId) {
-      const body = completionBody(memberId, task);
-      const existing = next.documents.find(document => document.unit_id === memberId && document.title === title);
-      if (existing) {
-        if (!existing.body.includes(task.id)) await command(`/resources/${existing.id}/update`, { title, body, scope: 'team', resource_ids: [], expected_version: existing.version });
-        resourceId = existing.id;
-      } else resourceId = (await command<{ id: string }>('/resources', { title, body, scope: 'team', resource_ids: [] })).id;
-      update({ [field]: resourceId });
+    const current = sessionRef.current;
+    const threadField = memberId === TRIAL_TWO ? 'completionTwoThreadId' : 'completionThreeThreadId';
+    let threadId = current ? completionThreadId(current, memberId) : '';
+    let thread: ThreadData | null = null;
+    if (threadId) {
+      try {
+        thread = await api<ThreadData>(`/threads/${threadId}`);
+        if (thread.thread.owner_id !== memberId || thread.thread.kind !== 'workspace' || thread.thread.purpose !== 'ordinary') thread = null;
+      } catch { thread = null; }
     }
-    await onRefresh(); update({ phase: memberId === TRIAL_TWO ? 'completion-two-ready' : 'completion-three-ready', completionFlowId: '', completionThreadId: '', error: '' });
+    if (!thread) {
+      threadId = (await command<{ id: string }>('/threads', { target_id: memberId })).id;
+      update({ [threadField]: threadId });
+    }
+    onNavigate('workspace', threadId); await onRefresh();
+    thread = await api<ThreadData>(`/threads/${threadId}`);
+    const prompt = completionPrompt(memberId, task);
+    const draftId = `accord.draft.${memberId}.${threadId}`;
+    const baseline = thread.messages.filter(message => message.conversation_id === threadId && message.from_kind === 'agent').map(message => message.id);
+    sessionStorage.setItem(draftId, prompt);
+    await cue(`[data-tour-task="${task.id}"]`); await cue('[data-tour="composer"]');
+    await waitForAction('composer.fill', { draftId, value: prompt, sourceIds: [] });
+    update({
+      [threadField]: threadId,
+      phase: completionPhase(memberId, 'work-ready'),
+      completionBaseline: baseline,
+      completionFlowId: '',
+      error: '',
+    });
   };
   const publishMeetingActions = async () => {
     const current = sessionRef.current;
@@ -297,17 +362,17 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
       else if (accept) throw new Error('演练需要的行动项已经被忽略，请重新开始演练。');
     }
     if (!taskIds[TRIAL_TWO] || !taskIds[TRIAL_THREE]) throw new Error('会议行动项没有完整创建为两位成员的待办。');
-    update({ taskTwoId: taskIds[TRIAL_TWO], taskThreeId: taskIds[TRIAL_THREE], error: '' }); await onRefresh(); await prepareCompletion(TRIAL_TWO, taskIds[TRIAL_TWO]);
+    update({ taskTwoId: taskIds[TRIAL_TWO], taskThreeId: taskIds[TRIAL_THREE], error: '' }); await onRefresh(); await prepareCompletionWork(TRIAL_TWO, taskIds[TRIAL_TWO]);
   };
-  const retryCompletion = async (memberId: typeof TRIAL_TWO | typeof TRIAL_THREE) => {
+  const retryCompletion = async (memberId: CompletionMember) => {
     const current = sessionRef.current; if (!current) return;
-    if (!current.completionFlowId) { update({ phase: memberId === TRIAL_TWO ? 'completion-two-ready' : 'completion-three-ready', error: '' }); return; }
+    if (!current.completionFlowId) { await prepareCompletionWork(memberId, completionTaskId(current, memberId)); return; }
     const flow = await api<FlowDetail>(`/flows/${current.completionFlowId}`);
-    if (flow.status === 'needs_input') await command(`/task-summaries/${flow.id}/reply`, { body: '对应完成记录已经放入我的团队工作池，请读取该记录并按待办目标重新核验。' });
+    if (flow.status === 'needs_input') await command(`/task-summaries/${flow.id}/reply`, { body: '请直接读取当前工作台对话中已经生成的完整结果，并按待办目标重新核验；不要依赖额外完成记录。' });
     else if (flow.status === 'error') await command(`/task-summaries/${flow.id}/retry`, {});
-    else if (flow.status === 'cancelled') { update({ phase: memberId === TRIAL_TWO ? 'completion-two-ready' : 'completion-three-ready', completionFlowId: '', error: '' }); return; }
+    else if (flow.status === 'cancelled') { update({ phase: completionPhase(memberId, 'ready'), completionFlowId: '', error: '' }); return; }
     else throw new Error('整理状态已经变化，请稍后再试。');
-    update({ phase: memberId === TRIAL_TWO ? 'completion-two-wait' : 'completion-three-wait', error: '' });
+    update({ phase: completionPhase(memberId, 'wait'), error: '' });
   };
   const resumeLiveMeeting = async (threadId: string) => {
     update({ meetingThreadId: threadId });
@@ -373,13 +438,27 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
       if (current.phase === 'meeting-three-ready') { await sendMeetingLine(TRIAL_THREE, tutorialCopy.uiLine); await onSwitchAccount(TRIAL_ONE); onNavigate('group', current.meetingThreadId); update({ phase: 'meeting-finish-ready', error: '' }); return; }
       if (current.phase === 'meeting-finish-ready') { await cue('[data-tour="meeting-finish"]'); await command(`/flows/${current.meetingFlowId}/finish`, {}); onNavigate('meetings', current.meetingFlowId); update({ phase: 'meeting-summary-wait', error: '' }); return; }
       if (current.phase === 'meeting-actions') { await publishMeetingActions(); return; }
+      if (current.phase === 'completion-two-work-ready' || current.phase === 'completion-three-work-ready') {
+        const memberId = current.phase === 'completion-two-work-ready' ? TRIAL_TWO : TRIAL_THREE;
+        const task = state.tasks.find(item => item.id === completionTaskId(current, memberId) && item.assignee_id === memberId);
+        const threadId = completionThreadId(current, memberId);
+        if (!task || !threadId || data?.thread.id !== threadId) throw new Error('当前工作台还没有准备好，请重试。');
+        const prompt = completionPrompt(memberId, task);
+        const draftId = `accord.draft.${memberId}.${threadId}`;
+        await cue('[data-tour="composer-send"]');
+        await runTutorialAction('composer.send', { draftId, expectedValue: prompt, sourceIds: [] });
+        update({ phase: completionPhase(memberId, 'work-wait'), error: '' }); return;
+      }
       if (current.phase === 'completion-two-ready' || current.phase === 'completion-three-ready') {
-        const taskId = current.phase === 'completion-two-ready' ? current.taskTwoId : current.taskThreeId;
+        const memberId = current.phase === 'completion-two-ready' ? TRIAL_TWO : TRIAL_THREE;
+        const taskId = completionTaskId(current, memberId);
         const task = state.tasks.find(item => item.id === taskId && item.assignee_id === state.me);
+        const threadId = completionThreadId(current, memberId);
         if (!task) throw new Error('当前账号还没有同步到这项待办，请刷新后重试。');
-        await cue(`[data-tour-task="${task.id}"]`); const result = await onTask(task);
+        if (!threadId || data?.thread.id !== threadId) throw new Error('请先回到完成这项工作的工作台对话。');
+        await cue(`[data-tour-task-checkbox="${task.id}"]`); const result = await onTask(task);
         if (!result.ok || !result.flowId) throw new Error('待办没有开始整理，请查看页面提示后重试。');
-        update({ phase: current.phase === 'completion-two-ready' ? 'completion-two-wait' : 'completion-three-wait', completionFlowId: result.flowId, completionThreadId: result.threadId || '', error: '' }); return;
+        update({ phase: completionPhase(memberId, 'wait'), completionFlowId: result.flowId, error: '' }); return;
       }
       if (current.phase === 'followup-ready') {
         const flow = await api<FlowDetail>(`/flows/${current.meetingFlowId}`);
@@ -398,13 +477,6 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
   useEffect(() => { if (!startSignal || startSignal === lastStart.current) return; lastStart.current = startSignal; if (session) { update({ paused: false }); setVisible(true); return; } void prepare(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [startSignal]);
   useEffect(() => { if (session?.phase === 'intro' && !session.prepared && !session.paused && !acting && !preparing.current) void prepare(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session?.phase, session?.prepared, acting]);
 
-  const target = useMemo(() => session ? phaseTarget(session) : '', [session]);
-  useEffect(() => {
-    const guide = driverRef.current; if (!guide || !session || !visible || !target) { guide?.destroy(); return; }
-    const timer = window.setTimeout(() => { const element = document.querySelector(target) || document.querySelector('#main-content'); if (element) guide.highlight({ element, disableActiveInteraction: true }); }, 120);
-    return () => window.clearTimeout(timer);
-  }, [session?.phase, session?.taskTwoId, session?.taskThreeId, target, visible, state.me, view, routeId, data?.thread.id]);
-
   useEffect(() => {
     if (!session || session.phase !== 'chat-wait' || state.me !== TRIAL_ONE || data?.thread.id !== session.chatThreadId) return;
     const fresh = data.messages.filter(message => message.conversation_id === session.chatThreadId && message.from_kind === 'agent' && !session.chatBaseline.includes(message.id));
@@ -417,6 +489,18 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
       update({ phase: 'chat-result', error: '' });
     }
   /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session?.phase, session?.chatThreadId, data?.messages]);
+
+  useEffect(() => {
+    if (!session || !['completion-two-work-wait', 'completion-three-work-wait'].includes(session.phase)) return;
+    const memberId = session.phase === 'completion-two-work-wait' ? TRIAL_TWO : TRIAL_THREE;
+    const threadId = completionThreadId(session, memberId);
+    if (state.me !== memberId || !threadId || data?.thread.id !== threadId) return;
+    const fresh = data.messages.filter(message => message.conversation_id === threadId && message.from_kind === 'agent' && !session.completionBaseline.includes(message.id));
+    const failed = [...fresh].reverse().find(message => ['error', 'cancelled'].includes(message.meta.status || ''));
+    if (failed) { fail(new Error(failed.meta.error || '本轮工作对话没有完成，请重试。'), memberId === TRIAL_TWO ? 'completion-two' : 'completion-three', memberId === TRIAL_TWO ? 5 : 6); return; }
+    const completed = [...fresh].reverse().find(message => message.meta.status === 'done' && message.body.trim());
+    if (completed) update({ phase: completionPhase(memberId, 'ready'), error: '' });
+  /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session?.phase, session?.completionTwoThreadId, session?.completionThreeThreadId, session?.completionBaseline, data?.messages]);
 
   useEffect(() => {
     if (!session) return;
@@ -437,13 +521,13 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
           transitioning.current = true;
           try {
             await onRefresh();
-            if (phase === 'completion-two-wait') await prepareCompletion(TRIAL_THREE, session.taskThreeId);
-            else { await onSwitchAccount(TRIAL_ONE); onNavigate('meetings', session.meetingFlowId); await onRefresh(); update({ phase: 'followup-ready', completionFlowId: '', completionThreadId: '', error: '' }); }
+            if (phase === 'completion-two-wait') await prepareCompletionWork(TRIAL_THREE, session.taskThreeId);
+            else { await onSwitchAccount(TRIAL_ONE); onNavigate('meetings', session.meetingFlowId); await onRefresh(); update({ phase: 'followup-ready', completionFlowId: '', error: '' }); }
           } finally { transitioning.current = false; }
           return;
         }
         if ((phase === 'completion-two-wait' || phase === 'completion-three-wait') && flow.status === 'cancelled') { fail(new Error('本次完成核验已取消，待办仍保持未完成。'), phase === 'completion-two-wait' ? 'completion-two' : 'completion-three', phaseStep(session)); return; }
-        if ((phase === 'completion-two-wait' || phase === 'completion-three-wait') && flow.status === 'needs_input') { fail(new Error('Agent 还缺一条可核验的完成信息。重试会请它读取工作池里的完成记录。'), phase === 'completion-two-wait' ? 'completion-two' : 'completion-three', phaseStep(session)); return; }
+        if ((phase === 'completion-two-wait' || phase === 'completion-three-wait') && flow.status === 'needs_input') { fail(new Error('Agent 还缺一条可核验的完成信息。重试会让它重新读取当前工作台对话。'), phase === 'completion-two-wait' ? 'completion-two' : 'completion-three', phaseStep(session)); return; }
         if (phase === 'followup-wait' && flow.status === 'closed') update({ phase: 'done', error: '' });
       } catch (error) {
         if (!stopped && error instanceof Error && !error.message.includes('暂时无法连接')) {
@@ -456,7 +540,7 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
   /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session?.phase, session?.meetingFlowId, session?.completionFlowId, session?.nextFlowId]);
 
   useEffect(() => {
-    if (!session || !visible || acting) return;
+    if (!session || !visible || acting || transitioning.current) return;
     let cancelled = false;
     const restore = async () => {
       try {
@@ -483,21 +567,46 @@ export function TutorialController({ startSignal, state, data, view, routeId, bu
           return;
         }
         if (session.phase.startsWith('completion-two') || session.phase.startsWith('completion-three')) {
-          if (session.phase.endsWith('-wait') && session.completionThreadId && (view !== 'workspace' || routeId !== session.completionThreadId)) { onNavigate('workspace', session.completionThreadId); return; }
-          if (session.phase.endsWith('-ready') && view !== 'workspace') { onNavigate('workspace'); return; }
-          onContext(true); return;
+          const memberId = session.phase.startsWith('completion-two') ? TRIAL_TWO : TRIAL_THREE;
+          const threadId = completionThreadId(session, memberId);
+          if (!threadId) { fail(new Error('本轮工作台对话尚未创建，请重试。'), memberId === TRIAL_TWO ? 'completion-two' : 'completion-three', memberId === TRIAL_TWO ? 5 : 6); return; }
+          if (view !== 'workspace' || routeId !== threadId) { onNavigate('workspace', threadId); return; }
+          onContext(true);
+          if (session.phase === completionPhase(memberId, 'work-ready')) {
+            const task = state.tasks.find(item => item.id === completionTaskId(session, memberId) && item.assignee_id === memberId);
+            if (!task) { fail(new Error('当前账号还没有同步到这项待办，请重试。'), memberId === TRIAL_TWO ? 'completion-two' : 'completion-three', memberId === TRIAL_TWO ? 5 : 6); return; }
+            const prompt = completionPrompt(memberId, task);
+            const draftId = `accord.draft.${memberId}.${threadId}`;
+            sessionStorage.setItem(draftId, prompt);
+            await waitForAction('composer.fill', { draftId, value: prompt, sourceIds: [] });
+          }
+          return;
         }
         if (session.phase === 'followup-wait' || session.phase === 'done') { if (view !== 'meetings' || routeId !== session.nextFlowId) { onNavigate('meetings', session.nextFlowId); return; } }
       } catch (error) { if (!cancelled && error instanceof Error && !error.message.includes('载入')) fail(error, session.recovery, phaseStep(session)); }
     };
     const timer = window.setTimeout(() => void restore(), 160); return () => { cancelled = true; window.clearTimeout(timer); };
-  /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session?.phase, session?.chatThreadId, session?.meetingFlowId, session?.meetingThreadId, session?.completionThreadId, session?.nextFlowId, session?.recovery, state.me, view, routeId, visible, acting]);
+  /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [session?.phase, session?.chatThreadId, session?.meetingFlowId, session?.meetingThreadId, session?.completionTwoThreadId, session?.completionThreeThreadId, session?.nextFlowId, session?.recovery, state.me, view, routeId, visible, acting]);
 
   if (!session || !visible) return null;
   const content = phaseContent(session); const disabled = content.disabled || acting || busy;
   return <>
-    <aside className="tutorial-panel" aria-live="polite" aria-label="教学演练">
-      <div className="tutorial-panel-meta"><span>步骤 {phaseStep(session)}/7</span><button type="button" onClick={pause}>退出</button></div>
+    <aside
+      ref={panelRef}
+      className="tutorial-panel"
+      data-dragging={panelDragging ? 'true' : undefined}
+      style={panelPosition ? { left: panelPosition.left, top: panelPosition.top, right: 'auto', bottom: 'auto' } : undefined}
+      aria-live="polite"
+      aria-label="教学演练，可拖动"
+    >
+      <div
+        className="tutorial-panel-meta"
+        onLostPointerCapture={stopPanelDrag}
+        onPointerCancel={stopPanelDrag}
+        onPointerDown={handlePanelPointerDown}
+        onPointerMove={handlePanelPointerMove}
+        onPointerUp={stopPanelDrag}
+      ><span>步骤 {phaseStep(session)}/7</span><button type="button" onClick={pause}>退出</button></div>
       <strong>{content.title}</strong><p>{content.description}</p>
       <Button data-tour="tutorial-next" size="sm" disabled={disabled} onClick={() => void advance()}>{(acting || content.disabled) && session.phase !== 'error' ? <LoadingIcon size={14} /> : null}{acting ? '正在执行' : content.action}</Button>
     </aside>

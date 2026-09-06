@@ -1,4 +1,4 @@
-"""Read-only external sources that become versioned Accord resources."""
+"""Read-only external sources that become versioned Paiban resources."""
 
 import hashlib
 import json
