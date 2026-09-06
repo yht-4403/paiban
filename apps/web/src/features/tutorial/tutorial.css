@@ -17,8 +17,9 @@
 .tutorial-panel button:disabled { cursor: default; }
 .tutorial-panel-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-secondary); font-size: 11px; cursor: grab; touch-action: none; user-select: none; }
 .tutorial-panel[data-dragging="true"] .tutorial-panel-meta { cursor: grabbing; }
-.tutorial-panel-meta > button { border: 0; padding: 2px 0; background: transparent; color: var(--text-secondary); font-size: 11px; }
-.tutorial-panel-meta > button:hover { color: var(--text-primary); }
+.tutorial-panel-actions { display: flex; align-items: center; gap: 10px; }
+.tutorial-panel-actions > button { border: 0; padding: 2px 0; background: transparent; color: var(--text-secondary); font-size: 11px; }
+.tutorial-panel-actions > button:hover { color: var(--text-primary); }
 .tutorial-panel > strong { display: block; margin-top: 14px; font-size: 15px; font-weight: 600; line-height: 1.5; }
 .tutorial-panel > p { margin: 7px 0 15px; color: var(--text-secondary); font-size: 12px; line-height: 1.7; }
 .tutorial-panel > [data-slot="button"] { width: 100%; justify-content: center; }

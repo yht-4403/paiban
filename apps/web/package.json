@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5186 --strictPort",
     "test:context": "node --experimental-strip-types --test src/features/workspace/contextTasks.test.mjs",
+    "test:tutorial": "node --experimental-strip-types --test src/features/tutorial/tutorialRuntime.test.mjs",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build"
   },

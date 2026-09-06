@@ -6,6 +6,7 @@ from uuid import uuid4
 import test_collaboration as fixtures
 import test_workflows as workflows
 
+from accord_api.modules.agent_runs import service as agent_runtime
 from accord_api.modules.collaboration.repository import message
 from accord_api.modules.coordination import generation, service, task_completion
 from accord_api.platform.ai.errors import ModelError
@@ -79,6 +80,38 @@ class TaskCompletionTests(unittest.TestCase):
                 for m in self.get('su', '/threads/' + self.tid)['messages']
             )
         )
+
+    def test_checkbox_confirms_a_completed_agent_result_without_an_extra_ok(self):
+        sent = self.post(
+            'su',
+            '/threads/' + self.tid + '/messages',
+            {'body': '待办：完成接口验收\n请直接完成检查并给出最终结果。'},
+        )
+        completed = {
+            'body': '接口验收已经完成，3 项边界全部通过，可以直接作为最终结果。',
+            'sources': [],
+            'model': 'test-provider',
+            'usage': {'prompt_tokens': 20, 'completion_tokens': 10, 'total_tokens': 30},
+            'finish_reason': 'stop',
+            'duration_ms': 12,
+        }
+        with patch(
+            'accord_api.modules.agent_runs.service.agent.stream_answer',
+            return_value=completed,
+        ):
+            agent_runtime.execute_run(sent['run_id'])
+
+        fid = self.tick()
+        result = self.run_summary(
+            fid,
+            found=False,
+            summary='',
+            question='这份结果是否已获你最终确认？',
+        )
+        self.assertEqual(result['status'], 'closed')
+        self.assertEqual(self.status(), 'done')
+        self.assertNotIn('是否', result['result'].get('question', ''))
+        self.assertIn('3 项边界全部通过', result['result']['summary'])
 
     def test_missing_context_asks_without_completing_and_unrelated_reply_does_not_finish(self):
         fid = self.tick()

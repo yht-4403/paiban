@@ -1,8 +1,10 @@
 """Idempotent reference material and an explicit virtual exploration example."""
 
 import hashlib
+import json
 from dataclasses import dataclass
 
+from accord_api.modules.coordination import task_completion
 from accord_api.modules.identity import service as identity
 from accord_api.modules.knowledge import index
 from accord_api.modules.knowledge.resources import create_resource
@@ -219,6 +221,37 @@ def _retire_legacy_completion_resources(db):
     return retired
 
 
+def _cancel_stale_completion_flows(db):
+    owner_ids = tuple(sorted(TRIAL_ACCOUNT_IDS))
+    placeholders = ','.join('?' for _ in owner_ids)
+    rows = db.execute(
+        f"""SELECT id,result FROM accord_flows
+        WHERE kind='task_summary' AND owner_id IN ({placeholders})
+        AND status IN ('queued','running','summarizing','needs_input','error')""",
+        owner_ids,
+    ).fetchall()
+    now = store.now()
+    for row in rows:
+        db.execute(
+            "UPDATE accord_flows SET status='cancelled',updated_at=? WHERE id=?",
+            (now, row['id']),
+        )
+        db.execute(
+            "UPDATE accord_flow_calls SET status='cancelled' WHERE flow_id=? AND status='running'",
+            (row['id'],),
+        )
+        message_id = json.loads(row['result'] or '{}').get('message_id')
+        if message_id:
+            task_completion.set_message(
+                db,
+                row['id'],
+                message_id,
+                '上一轮教学演练的待办整理已取消，本轮可以继续。',
+                'cancelled',
+            )
+    return len(rows)
+
+
 def _assert_existing_resource(db, expected: TutorialResource, row):
     version = db.execute(
         'SELECT * FROM accord_resource_versions WHERE resource_id=? AND version=?',
@@ -260,6 +293,7 @@ def prepare(uid: str):
     resources = []
     created_count = 0
     with store.lock, store.connection() as db:
+        cancelled_completion_count = _cancel_stale_completion_flows(db)
         retired_completion_count = _retire_legacy_completion_resources(db)
         for item in TUTORIAL_RESOURCES:
             row = db.execute('SELECT * FROM accord_resources WHERE id=?', (item.id,)).fetchone()
@@ -289,6 +323,7 @@ def prepare(uid: str):
     return {
         'ready': True,
         'created_count': created_count,
+        'cancelled_completion_count': cancelled_completion_count,
         'retired_completion_count': retired_completion_count,
         'resources': resources,
         'exploration_fixture': fixture,

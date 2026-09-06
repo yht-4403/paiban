@@ -13,6 +13,7 @@ if 'ACCORD_DATA_DIR' not in os.environ:
 from fastapi.testclient import TestClient  # noqa: E402
 
 from accord_api.app import app  # noqa: E402
+from accord_api.modules.coordination import service as coordination_service  # noqa: E402
 from accord_api.modules.identity import service as identity  # noqa: E402
 from accord_api.modules.knowledge import index, resources, retrieval  # noqa: E402
 from accord_api.modules.tutorial import exploration_fixture  # noqa: E402
@@ -68,6 +69,14 @@ class TutorialPreparationTests(unittest.TestCase):
                 db.execute('DELETE FROM accord_resources WHERE id=?', (resource_id,))
             while index.synchronize(db):
                 pass
+
+    def _cancel_active_completion_flows(self, owner_id):
+        with database.lock, database.connection() as db:
+            db.execute(
+                """UPDATE accord_flows SET status='cancelled'
+                WHERE owner_id=? AND kind='task_summary' AND status!='closed'""",
+                (owner_id,),
+            )
 
     def _prepare(self, account_id='fixed_trial_1'):
         return self.client.post('/api/tutorial/prepare', headers=self._headers(account_id))
@@ -452,6 +461,56 @@ class TutorialPreparationTests(unittest.TestCase):
             ).fetchone()
             self.assertEqual(legacy['active'], 0)
             self.assertEqual(unrelated['active'], 1)
+
+    def test_prepare_clears_stale_completion_before_the_next_tutorial_task(self):
+        owner_id = 'fixed_trial_2'
+        self.addCleanup(self._cancel_active_completion_flows, owner_id)
+        created = self.client.post(
+            '/api/threads',
+            json={
+                'operation_id': str(uuid4()),
+                'target_id': owner_id,
+                'title': '旧演练工作台',
+            },
+            headers=self._headers(owner_id),
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        thread_id = created.json()['id']
+        with database.lock, database.connection() as db:
+            stale_task_id, _ = coordination_service.create_task(
+                db, owner_id, owner_id, '旧演练待办', '上一轮没有完成的整理', thread_id
+            )
+            next_task_id, _ = coordination_service.create_task(
+                db, owner_id, owner_id, '本轮演练待办', '第五步需要勾选的待办', thread_id
+            )
+
+        stale = self.client.post(
+            f'/api/tasks/{stale_task_id}/tick',
+            json={'operation_id': str(uuid4()), 'thread_id': thread_id},
+            headers=self._headers(owner_id),
+        )
+        self.assertEqual(stale.status_code, 200, stale.text)
+        with database.lock, database.connection() as db:
+            db.execute(
+                "UPDATE accord_flows SET status='error',error=? WHERE id=?",
+                ('资料不存在或当前无权读取。', stale.json()['id']),
+            )
+
+        prepared = self._prepare(owner_id)
+        self.assertEqual(prepared.status_code, 200, prepared.text)
+        self.assertEqual(prepared.json()['cancelled_completion_count'], 1)
+        stale_flow = database.query_one(
+            'SELECT status,error FROM accord_flows WHERE id=?', (stale.json()['id'],)
+        )
+        self.assertEqual(stale_flow['status'], 'cancelled')
+        self.assertEqual(stale_flow['error'], '资料不存在或当前无权读取。')
+
+        current = self.client.post(
+            f'/api/tasks/{next_task_id}/tick',
+            json={'operation_id': str(uuid4()), 'thread_id': thread_id},
+            headers=self._headers(owner_id),
+        )
+        self.assertEqual(current.status_code, 200, current.text)
 
     def test_fixed_account_brand_migration_updates_only_fixed_content(self):
         fixed_id = 'resource_fixed_brand_test'
